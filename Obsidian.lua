@@ -26,8 +26,11 @@ local COLORS = {
 	muted = Color3.fromRGB(126, 119, 139),
 }
 
+local TeleportService = game:GetService("TeleportService")
+local MarketplaceService = game:GetService("MarketplaceService")
+
 local Obsidian = {
-	Version = "1.0.0",
+	Version = "1.1.0",
 	_capturing = false,
 }
 
@@ -45,8 +48,40 @@ local function protect(gui)
 	gui.Parent = CoreGui
 end
 
-local function tween(obj, props, time)
-	TweenService:Create(obj, TweenInfo.new(time or 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props):Play()
+-- Embedded Lucide atlas icons (48px sheet)
+local LUCIDE = {
+	keyboard = { id = 16898613509, rect = Vector2.new(453, 820), size = Vector2.new(48, 48) },
+	bell = { id = 16898612819, rect = Vector2.new(820, 257), size = Vector2.new(48, 48) },
+	sparkles = { id = 16898613777, rect = Vector2.new(918, 49), size = Vector2.new(48, 48) },
+}
+
+local function lucideIcon(parent, name, size, color, position, anchor)
+	local asset = LUCIDE[name] or LUCIDE.bell
+	local img = Instance.new("ImageLabel")
+	img.Name = name
+	img.BackgroundTransparency = 1
+	img.BorderSizePixel = 0
+	img.Size = UDim2.fromOffset(size or 14, size or 14)
+	img.Position = position or UDim2.new()
+	img.AnchorPoint = anchor or Vector2.new()
+	img.Image = "rbxassetid://" .. tostring(asset.id)
+	img.ImageRectOffset = asset.rect
+	img.ImageRectSize = asset.size
+	img.ImageColor3 = color or COLORS.text
+	img.ScaleType = Enum.ScaleType.Fit
+	img.ZIndex = 60
+	img.Parent = parent
+	return img
+end
+
+local function tween(obj, props, time, style, dir)
+	local t = TweenService:Create(
+		obj,
+		TweenInfo.new(time or 0.18, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out),
+		props
+	)
+	t:Play()
+	return t
 end
 
 local function corner(parent, radius)
@@ -233,15 +268,16 @@ local function makeKeybind(parent, config)
 		BackgroundColor3 = Color3.fromRGB(27, 25, 34),
 		Text = Obsidian.FormatBind(value),
 		TextColor3 = Color3.fromRGB(192, 187, 202),
-		ZIndex = 8,
+		TextSize = config.TextSize or 10,
+		ZIndex = config.ZIndex or 8,
 	})
 	corner(btn, 9)
 	stroke(btn, COLORS.line, 0.3)
 
-	local function setValue(v)
+	local function setValue(v, silent)
 		value = v
 		btn.Text = listening and "..." or Obsidian.FormatBind(value)
-		if config.OnChanged then
+		if not silent and config.OnChanged then
 			task.spawn(config.OnChanged, value)
 		end
 	end
@@ -278,7 +314,7 @@ local function makeKeybind(parent, config)
 				listening = false
 				Obsidian._capturing = false
 				btn.BackgroundColor3 = Color3.fromRGB(27, 25, 34)
-				setValue(bind)
+				setValue(bind, false)
 				conn:Disconnect()
 			end
 		end)
@@ -288,8 +324,8 @@ local function makeKeybind(parent, config)
 		Get = function()
 			return value
 		end,
-		Set = function(_, v)
-			setValue(v)
+		Set = function(_, v, silent)
+			setValue(v, silent == true)
 		end,
 		Button = btn,
 	}
@@ -510,17 +546,27 @@ function Obsidian:Create(config)
 		pad(hkPad, 10, 10, 12, 12)
 
 		local hkHeader = Instance.new("TextButton")
-		hkHeader.Size = UDim2.new(1, 0, 0, 20)
+		hkHeader.Size = UDim2.new(1, 0, 0, 22)
 		hkHeader.BackgroundTransparency = 1
 		hkHeader.Text = ""
 		hkHeader.LayoutOrder = 0
 		hkHeader.ZIndex = 51
 		hkHeader.Parent = hkPad
+
+		lucideIcon(
+			hkHeader,
+			"keyboard",
+			14,
+			Color3.fromRGB(210, 210, 216),
+			UDim2.new(0, 0, 0.5, 0),
+			Vector2.new(0, 0.5)
+		)
 		label(hkHeader, {
-			Text = "⌨  Hotkeys",
+			Text = "Hotkeys",
 			Font = Enum.Font.GothamBold,
 			TextSize = 13,
-			Size = UDim2.new(1, 0, 1, 0),
+			Size = UDim2.new(1, -22, 1, 0),
+			Position = UDim2.fromOffset(20, 0),
 			ZIndex = 52,
 		})
 
@@ -547,6 +593,28 @@ function Obsidian:Create(config)
 		state.hotkeyPad = hkPad
 	end
 
+	-- Top-center notification stack (original style)
+	local notifyHost = Instance.new("Frame")
+	notifyHost.Name = "NotificationHost"
+	notifyHost.AnchorPoint = Vector2.new(0.5, 0)
+	notifyHost.Position = UDim2.new(0.5, 0, 0, 72)
+	notifyHost.Size = UDim2.fromOffset(0, 0)
+	notifyHost.AutomaticSize = Enum.AutomaticSize.XY
+	notifyHost.BackgroundTransparency = 1
+	notifyHost.BorderSizePixel = 0
+	notifyHost.ZIndex = 200
+	notifyHost.Parent = holder
+	local notifyList = list(notifyHost, 8)
+	notifyList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	notifyList.VerticalAlignment = Enum.VerticalAlignment.Top
+
+	local function isListed(entry)
+		if entry.getListed then
+			return entry.getListed() ~= false
+		end
+		return entry.listed ~= false
+	end
+
 	local function refreshHotkeys()
 		if not state.hotkeyPad then
 			return
@@ -558,12 +626,20 @@ function Obsidian:Create(config)
 		end
 		local order = 1
 		for _, entry in state.keybinds do
+			if not isListed(entry) then
+				continue
+			end
+			-- only show active feature binds (UI Toggle always shown)
+			if entry.name ~= "UI Toggle" and entry.requireActive and not entry.active then
+				continue
+			end
 			order += 1
 			local row = Instance.new("Frame")
 			row.Name = "Row"
-			row.Size = UDim2.new(1, 0, 0, 20)
+			row.Size = UDim2.new(1, 0, 0, 22)
 			row.BackgroundTransparency = 1
 			row.LayoutOrder = order
+			row.ZIndex = 55
 			row.Parent = state.hotkeyPad
 
 			label(row, {
@@ -571,7 +647,8 @@ function Obsidian:Create(config)
 				TextColor3 = COLORS.muted,
 				TextSize = 11,
 				Font = Enum.Font.Gotham,
-				Size = UDim2.fromOffset(52, 20),
+				Size = UDim2.fromOffset(52, 22),
+				ZIndex = 56,
 			})
 			label(row, {
 				Text = entry.name,
@@ -580,16 +657,31 @@ function Obsidian:Create(config)
 				Size = UDim2.new(1, -120, 1, 0),
 				Position = UDim2.fromOffset(56, 0),
 				TextTruncate = Enum.TextTruncate.AtEnd,
+				ZIndex = 56,
 			})
-			label(row, {
-				Text = Obsidian.FormatBind(entry.get and entry.get() or entry.value),
-				TextColor3 = COLORS.muted,
-				TextSize = 11,
-				Font = Enum.Font.GothamMedium,
-				Size = UDim2.fromOffset(56, 20),
-				Position = UDim2.new(1, 0, 0, 0),
-				AnchorPoint = Vector2.new(1, 0),
-				TextXAlignment = Enum.TextXAlignment.Right,
+
+			local current = entry.get and entry.get() or entry.value
+			makeKeybind(row, {
+				Default = current,
+				Width = 58,
+				TextSize = 10,
+				ZIndex = 57,
+				Position = UDim2.new(1, 0, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				OnChanged = function(v)
+					if entry.apply then
+						entry.apply(v)
+					elseif entry.kb then
+						entry.kb:Set(v, true)
+						entry.value = v
+						if entry.onChanged then
+							task.spawn(entry.onChanged, v)
+						end
+					else
+						entry.value = v
+					end
+					refreshHotkeys()
+				end,
 			})
 		end
 	end
@@ -597,43 +689,72 @@ function Obsidian:Create(config)
 	local function selectPage(page)
 		state.selectedPage = page
 		pageTitle.Text = page.name
+		pageTitle.TextTransparency = 1
+		tween(pageTitle, { TextTransparency = 0 }, 0.22)
 		for _, p in state.pages do
 			local show = p == page
 			p.left.Visible = show
 			p.right.Visible = show
 			if p.navBtn then
-				p.navBtn.BackgroundTransparency = show and 0 or 1
+				tween(p.navBtn, {
+					BackgroundTransparency = show and 0 or 1,
+				}, 0.16)
 				p.navBtn.BackgroundColor3 = show and Color3.fromRGB(55, 42, 109) or Color3.fromRGB(21, 19, 27)
-				p.navLabel.TextColor3 = show and COLORS.text or COLORS.muted
+				tween(p.navLabel, {
+					TextColor3 = show and COLORS.text or COLORS.muted,
+				}, 0.16)
 			end
 		end
+		-- subtle content slide
+		pageHost.Position = UDim2.fromOffset(16, 56)
+		tween(pageHost, { Position = UDim2.fromOffset(16, 48) }, 0.22)
 	end
 
 	local function setVisible(v)
 		state.visible = v
-		window.Visible = v and not state.collapsed
-		if state.collapsed then
-			window.Visible = v
-		end
 		holder.Enabled = true
-		window.Visible = v
-		if hotkeys then
-			hotkeys.Visible = v
+		if v then
+			window.Visible = true
+			window.BackgroundTransparency = 1
+			tween(window, { BackgroundTransparency = 0 }, 0.2)
+			if hotkeys then
+				hotkeys.Visible = true
+				hotkeys.BackgroundTransparency = 1
+				tween(hotkeys, { BackgroundTransparency = 0.05 }, 0.2)
+			end
+		else
+			tween(window, { BackgroundTransparency = 1 }, 0.16)
+			if hotkeys then
+				tween(hotkeys, { BackgroundTransparency = 1 }, 0.16)
+			end
+			task.delay(0.16, function()
+				if not state.visible then
+					window.Visible = false
+					if hotkeys then
+						hotkeys.Visible = false
+					end
+				end
+			end)
 		end
 	end
 
 	local function setCollapsed(v)
 		state.collapsed = v
 		if v then
-			window.Size = UDim2.fromOffset(280, 56)
 			sidebar.Visible = false
 			content.Visible = false
 			minBtn.Text = "□"
+			tween(window, { Size = UDim2.fromOffset(280, 56) }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 		else
-			window.Size = UDim2.fromOffset(760, 500)
-			sidebar.Visible = true
-			content.Visible = true
 			minBtn.Text = "–"
+			tween(window, { Size = UDim2.fromOffset(760, 500) }, 0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+			task.delay(0.12, function()
+				if not state.collapsed then
+					sidebar.Visible = true
+					content.Visible = true
+					content.BackgroundTransparency = 1
+				end
+			end)
 		end
 	end
 
@@ -660,6 +781,12 @@ function Obsidian:Create(config)
 			return
 		end
 		for _, entry in state.keybinds do
+			if entry.listed == false then
+				continue
+			end
+			if entry.getListed and entry.getListed() == false then
+				continue
+			end
 			local val = entry.get and entry.get() or entry.value
 			if bindsMatch(val, input) then
 				local mode = string.lower(entry.mode or "toggle")
@@ -701,28 +828,69 @@ function Obsidian:Create(config)
 	local WindowApi = {}
 	WindowApi.__index = WindowApi
 
-	function WindowApi:Notify(text, _icon)
-		local toast = Instance.new("Frame")
-		toast.AnchorPoint = Vector2.new(1, 0)
-		toast.Position = UDim2.new(1, -18, 0, 18)
-		toast.Size = UDim2.fromOffset(260, 48)
-		toast.BackgroundColor3 = COLORS.surface
+	function WindowApi:Notify(text, iconName)
+		local toast = Instance.new("CanvasGroup")
+		toast.Size = UDim2.fromOffset(0, 46)
+		toast.AutomaticSize = Enum.AutomaticSize.X
+		toast.BackgroundTransparency = 1
 		toast.BorderSizePixel = 0
-		toast.ZIndex = 100
-		toast.Parent = holder
-		corner(toast, 12)
-		stroke(toast, COLORS.purple, 0.4)
-		label(toast, {
-			Text = tostring(text),
-			Size = UDim2.new(1, -24, 1, 0),
-			Position = UDim2.fromOffset(12, 0),
-			Font = Enum.Font.GothamSemibold,
-			TextSize = 12,
-			ZIndex = 101,
-		})
-		task.delay(2.5, function()
-			tween(toast, { BackgroundTransparency = 1 }, 0.2)
-			task.wait(0.2)
+		toast.GroupTransparency = 1
+		toast.ZIndex = 201
+		toast.LayoutOrder = #notifyHost:GetChildren() + 1
+		toast.Parent = notifyHost
+
+		local scale = Instance.new("UIScale")
+		scale.Scale = 0.88
+		scale.Parent = toast
+
+		local body = Instance.new("Frame")
+		body.Size = UDim2.fromScale(1, 1)
+		body.AutomaticSize = Enum.AutomaticSize.X
+		body.Position = UDim2.fromOffset(0, -12)
+		body.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
+		body.BackgroundTransparency = 0.05
+		body.BorderSizePixel = 0
+		body.ZIndex = 202
+		body.Parent = toast
+		corner(body, 16)
+		stroke(body, Color3.fromRGB(157, 105, 255), 0.7)
+
+		local padFrame = Instance.new("UIPadding")
+		padFrame.PaddingLeft = UDim.new(0, 12)
+		padFrame.PaddingRight = UDim.new(0, 14)
+		padFrame.Parent = body
+
+		lucideIcon(
+			body,
+			iconName or "bell",
+			15,
+			Color3.fromRGB(186, 151, 255),
+			UDim2.new(0, 0, 0.5, 0),
+			Vector2.new(0, 0.5)
+		)
+
+		local textLabel = Instance.new("TextLabel")
+		textLabel.BackgroundTransparency = 1
+		textLabel.Position = UDim2.fromOffset(22, 0)
+		textLabel.Size = UDim2.fromOffset(0, 46)
+		textLabel.AutomaticSize = Enum.AutomaticSize.X
+		textLabel.Font = Enum.Font.GothamSemibold
+		textLabel.TextSize = 12
+		textLabel.TextColor3 = COLORS.text
+		textLabel.TextXAlignment = Enum.TextXAlignment.Left
+		textLabel.Text = tostring(text)
+		textLabel.ZIndex = 203
+		textLabel.Parent = body
+
+		tween(toast, { GroupTransparency = 0 }, 0.28)
+		tween(body, { Position = UDim2.fromOffset(0, 0) }, 0.28)
+		tween(scale, { Scale = 1 }, 0.28)
+
+		task.delay(2.6, function()
+			tween(toast, { GroupTransparency = 1 }, 0.22)
+			tween(body, { Position = UDim2.fromOffset(0, -10) }, 0.22)
+			tween(scale, { Scale = 0.9 }, 0.22)
+			task.wait(0.24)
 			toast:Destroy()
 		end)
 	end
@@ -731,12 +899,17 @@ function Obsidian:Create(config)
 		setVisible(v == true)
 	end
 
+	function WindowApi:SetCollapsed(v)
+		setCollapsed(v == true)
+	end
+
 	function WindowApi:Toggle()
 		setVisible(not state.visible)
 	end
 
 	function WindowApi:SetToggleKey(key)
 		state.toggleKey = key
+		refreshHotkeys()
 	end
 
 	function WindowApi:AddSection(name)
@@ -963,28 +1136,67 @@ function Obsidian:Create(config)
 				TextSize = 12,
 				Size = UDim2.new(1, -110, 1, 0),
 			})
+
+			local entry
 			local kb = makeKeybind(card, {
 				Default = cfg.Default,
 				OnChanged = function(v)
+					if entry then
+						entry.value = v
+					end
 					refreshHotkeys()
 					if cfg.OnChanged then
 						cfg.OnChanged(v)
 					end
 				end,
 			})
-			local entry = {
+
+			entry = {
 				name = cfg.Name or "Keybind",
 				mode = cfg.Mode or "Toggle",
 				callback = cfg.Callback,
+				onChanged = cfg.OnChanged,
 				active = cfg.DefaultActive == true,
+				listed = cfg.Listed ~= false,
+				requireActive = cfg.RequireActive == true,
+				kb = kb,
+				value = cfg.Default,
 				get = function()
 					return kb.Get()
 				end,
-				value = cfg.Default,
+				getListed = function()
+					return entry.listed ~= false
+				end,
+				apply = function(v)
+					kb:Set(v, true)
+					entry.value = v
+					if cfg.OnChanged then
+						task.spawn(cfg.OnChanged, v)
+					end
+				end,
 			}
 			table.insert(state.keybinds, entry)
 			refreshHotkeys()
-			return kb
+
+			return {
+				Get = kb.Get,
+				Set = kb.Set,
+				Button = kb.Button,
+				SetActive = function(_, v)
+					entry.active = v == true
+					refreshHotkeys()
+				end,
+				GetActive = function()
+					return entry.active == true
+				end,
+				SetListed = function(_, v)
+					entry.listed = v ~= false
+					refreshHotkeys()
+				end,
+				GetListed = function()
+					return entry.listed ~= false
+				end,
+			}
 		end
 
 		function api:AddColorPicker(cfg)
@@ -1094,6 +1306,7 @@ function Obsidian:Create(config)
 			group.BackgroundColor3 = COLORS.panel
 			group.BorderSizePixel = 0
 			group.LayoutOrder = #parentFrame:GetChildren()
+			group.ClipsDescendants = false
 			group.Parent = parentFrame
 			corner(group, 14)
 			stroke(group, COLORS.line, 0.45)
@@ -1124,9 +1337,10 @@ function Obsidian:Create(config)
 				})
 			end
 
+			local groupToggle
 			local groupEnabled = if cfg.Default == nil then true else cfg.Default
 			if cfg.Default ~= nil or cfg.Callback then
-				makeToggle(header, groupEnabled, function(v)
+				groupToggle = makeToggle(header, groupEnabled, function(v)
 					groupEnabled = v
 					if cfg.Callback then
 						cfg.Callback(v)
@@ -1142,23 +1356,41 @@ function Obsidian:Create(config)
 			body.Parent = group
 			list(body, 0)
 
-			local groupApi = createControlHost(body)
-			-- wrap adds to use dividers look: transparent cards
-			local oldToggle = groupApi.AddToggle
-			function groupApi:AddToggle(c)
+			local function addDivider(parent)
+				local line = Instance.new("Frame")
+				line.Size = UDim2.new(1, -28, 0, 1)
+				line.Position = UDim2.new(0, 14, 1, 0)
+				line.AnchorPoint = Vector2.new(0, 1)
+				line.BackgroundColor3 = COLORS.line
+				line.BackgroundTransparency = 0.55
+				line.BorderSizePixel = 0
+				line.Parent = parent
+			end
+
+			local function row(height)
 				local card = Instance.new("Frame")
-				card.Size = UDim2.new(1, 0, 0, c and c.Description and 56 or 46)
+				card.Size = UDim2.new(1, 0, 0, height)
 				card.BackgroundTransparency = 1
+				card.BorderSizePixel = 0
 				card.LayoutOrder = #body:GetChildren()
 				card.Parent = body
 				pad(card, 10, 10, 14, 14)
+				addDivider(card)
+				return card
+			end
+
+			local groupApi = {}
+
+			function groupApi:AddToggle(c)
+				c = c or {}
+				local card = row(c.Description and 56 or 46)
 				label(card, {
-					Text = (c and c.Name) or "Toggle",
+					Text = c.Name or "Toggle",
 					Font = Enum.Font.GothamSemibold,
 					TextSize = 12,
 					Size = UDim2.new(1, -50, 0, 18),
 				})
-				if c and c.Description then
+				if c.Description then
 					label(card, {
 						Text = c.Description,
 						TextColor3 = COLORS.muted,
@@ -1167,26 +1399,348 @@ function Obsidian:Create(config)
 						Position = UDim2.fromOffset(0, 20),
 					})
 				end
-				local line = Instance.new("Frame")
-				line.Size = UDim2.new(1, -28, 0, 1)
-				line.Position = UDim2.new(0, 14, 1, 0)
-				line.AnchorPoint = Vector2.new(0, 1)
-				line.BackgroundColor3 = COLORS.line
-				line.BackgroundTransparency = 0.55
-				line.BorderSizePixel = 0
-				line.Parent = card
-				return makeToggle(card, c and c.Default == true, c and c.Callback)
+				return makeToggle(card, c.Default == true, c.Callback)
 			end
 
-			-- For other controls, use normal card style inside body via parentFrame swap
-			local inner = createControlHost(body)
-			groupApi.AddSlider = inner.AddSlider
-			groupApi.AddDropdown = inner.AddDropdown
-			groupApi.AddKeybind = inner.AddKeybind
-			groupApi.AddColorPicker = inner.AddColorPicker
-			groupApi.AddButton = inner.AddButton
-			groupApi.AddParagraph = inner.AddParagraph
-			groupApi.AddToggle = groupApi.AddToggle
+			function groupApi:AddSlider(c)
+				c = c or {}
+				local minV, maxV = c.Min or 0, c.Max or 100
+				local value = c.Default or minV
+				local card = row(68)
+				label(card, {
+					Text = c.Name or "Slider",
+					Font = Enum.Font.GothamSemibold,
+					TextSize = 12,
+					Size = UDim2.new(1, -56, 0, 18),
+				})
+				local box = Instance.new("TextBox")
+				box.Size = UDim2.fromOffset(48, 22)
+				box.Position = UDim2.new(1, 0, 0, 0)
+				box.AnchorPoint = Vector2.new(1, 0)
+				box.BackgroundColor3 = Color3.fromRGB(22, 20, 28)
+				box.BorderSizePixel = 0
+				box.Text = tostring(value)
+				box.Font = Enum.Font.GothamSemibold
+				box.TextSize = 10
+				box.TextColor3 = COLORS.purple
+				box.Parent = card
+				corner(box, 7)
+
+				local track = Instance.new("Frame")
+				track.Position = UDim2.fromOffset(0, 32)
+				track.Size = UDim2.new(1, 0, 0, 5)
+				track.BackgroundColor3 = Color3.fromRGB(48, 45, 57)
+				track.BorderSizePixel = 0
+				track.Parent = card
+				corner(track, 100)
+
+				local fill = Instance.new("Frame")
+				fill.Size = UDim2.fromScale((value - minV) / math.max(maxV - minV, 1), 1)
+				fill.BackgroundColor3 = COLORS.purple
+				fill.BorderSizePixel = 0
+				fill.Parent = track
+				corner(fill, 100)
+
+				local knob = Instance.new("Frame")
+				knob.Size = UDim2.fromOffset(12, 12)
+				knob.AnchorPoint = Vector2.new(0.5, 0.5)
+				knob.Position = UDim2.fromScale((value - minV) / math.max(maxV - minV, 1), 0.5)
+				knob.BackgroundColor3 = Color3.fromRGB(242, 240, 247)
+				knob.BorderSizePixel = 0
+				knob.ZIndex = 3
+				knob.Parent = track
+				corner(knob, 100)
+
+				local function set(v)
+					value = math.clamp(math.round(v), minV, maxV)
+					local a = (value - minV) / math.max(maxV - minV, 1)
+					fill.Size = UDim2.fromScale(a, 1)
+					knob.Position = UDim2.fromScale(a, 0.5)
+					box.Text = tostring(value)
+					if c.Callback then
+						task.spawn(c.Callback, value)
+					end
+				end
+
+				local sliding = false
+				track.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 then
+						sliding = true
+						local a = math.clamp((input.Position.X - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+						set(minV + (maxV - minV) * a)
+					end
+				end)
+				UserInputService.InputChanged:Connect(function(input)
+					if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
+						local a = math.clamp((input.Position.X - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+						set(minV + (maxV - minV) * a)
+					end
+				end)
+				UserInputService.InputEnded:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 then
+						sliding = false
+					end
+				end)
+				box.FocusLost:Connect(function()
+					local n = tonumber(box.Text)
+					if n then
+						set(n)
+					else
+						box.Text = tostring(value)
+					end
+				end)
+				return { Set = set, Get = function() return value end }
+			end
+
+			function groupApi:AddKeybind(c)
+				c = c or {}
+				local card = row(46)
+				label(card, {
+					Text = c.Name or "Keybind",
+					Font = Enum.Font.GothamSemibold,
+					TextSize = 12,
+					Size = UDim2.new(1, -110, 1, 0),
+				})
+				local entry
+				local kb = makeKeybind(card, {
+					Default = c.Default,
+					OnChanged = function(v)
+						if entry then
+							entry.value = v
+						end
+						refreshHotkeys()
+						if c.OnChanged then
+							c.OnChanged(v)
+						end
+					end,
+				})
+				entry = {
+					name = c.Name or "Keybind",
+					mode = c.Mode or "Toggle",
+					callback = c.Callback,
+					onChanged = c.OnChanged,
+					active = c.DefaultActive == true,
+					listed = c.Listed ~= false,
+					requireActive = c.RequireActive == true,
+					kb = kb,
+					value = c.Default,
+					get = function()
+						return kb.Get()
+					end,
+					getListed = function()
+						return entry.listed ~= false
+					end,
+					apply = function(v)
+						kb:Set(v, true)
+						entry.value = v
+						if c.OnChanged then
+							task.spawn(c.OnChanged, v)
+						end
+					end,
+				}
+				table.insert(state.keybinds, entry)
+				refreshHotkeys()
+				return {
+					Get = kb.Get,
+					Set = kb.Set,
+					Button = kb.Button,
+					SetActive = function(_, v)
+						entry.active = v == true
+						refreshHotkeys()
+					end,
+					GetActive = function()
+						return entry.active == true
+					end,
+					SetListed = function(_, v)
+						entry.listed = v ~= false
+						refreshHotkeys()
+					end,
+					GetListed = function()
+						return entry.listed ~= false
+					end,
+				}
+			end
+
+			function groupApi:AddDropdown(c)
+				c = c or {}
+				local options = c.Options or { "Option 1" }
+				local value = c.Default or options[1]
+				local card = row(70)
+				label(card, {
+					Text = c.Name or "Dropdown",
+					Font = Enum.Font.GothamSemibold,
+					TextSize = 12,
+					Size = UDim2.new(1, 0, 0, 18),
+				})
+				local open = false
+				local main = button(card, {
+					Size = UDim2.new(1, 0, 0, 30),
+					Position = UDim2.fromOffset(0, 22),
+					Text = "  " .. tostring(value),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					BackgroundColor3 = Color3.fromRGB(27, 25, 34),
+					TextColor3 = Color3.fromRGB(191, 186, 201),
+					ZIndex = 5,
+				})
+				corner(main, 9)
+				stroke(main, COLORS.line, 0.4)
+
+				local menu = Instance.new("Frame")
+				menu.Visible = false
+				menu.Position = UDim2.fromOffset(0, 56)
+				menu.Size = UDim2.new(1, 0, 0, #options * 28 + 8)
+				menu.BackgroundColor3 = Color3.fromRGB(18, 17, 24)
+				menu.BorderSizePixel = 0
+				menu.ZIndex = 40
+				menu.Parent = card
+				corner(menu, 9)
+				stroke(menu, COLORS.line, 0.25)
+				list(menu, 2)
+				pad(menu, 4, 4, 4, 4)
+
+				local function set(v)
+					value = v
+					main.Text = "  " .. tostring(value)
+					menu.Visible = false
+					open = false
+					if c.Callback then
+						task.spawn(c.Callback, value)
+					end
+				end
+
+				for i, opt in options do
+					local optBtn = button(menu, {
+						Size = UDim2.new(1, 0, 0, 26),
+						Text = opt,
+						BackgroundColor3 = opt == value and Color3.fromRGB(47, 35, 72) or Color3.fromRGB(23, 22, 30),
+						BackgroundTransparency = opt == value and 0 or 1,
+						TextColor3 = opt == value and Color3.fromRGB(178, 143, 252) or Color3.fromRGB(190, 186, 199),
+						ZIndex = 41,
+					})
+					optBtn.LayoutOrder = i
+					corner(optBtn, 7)
+					optBtn.MouseButton1Click:Connect(function()
+						set(opt)
+					end)
+				end
+
+				main.MouseButton1Click:Connect(function()
+					open = not open
+					menu.Visible = open
+				end)
+				return { Set = set, Get = function() return value end }
+			end
+
+			function groupApi:AddButton(c)
+				c = c or {}
+				local card = row(c.Description and 72 or 52)
+				if c.Description then
+					label(card, {
+						Text = c.Name or "Button",
+						Font = Enum.Font.GothamSemibold,
+						TextSize = 12,
+						Size = UDim2.new(1, 0, 0, 14),
+					})
+					label(card, {
+						Text = c.Description,
+						TextColor3 = COLORS.muted,
+						TextSize = 9,
+						Size = UDim2.new(1, 0, 0, 12),
+						Position = UDim2.fromOffset(0, 16),
+					})
+				end
+				local b = button(card, {
+					Size = UDim2.new(1, 0, 0, 30),
+					Position = UDim2.fromOffset(0, c.Description and 32 or 4),
+					Text = c.Name or "Button",
+					BackgroundColor3 = COLORS.purple,
+					TextColor3 = Color3.new(1, 1, 1),
+				})
+				corner(b, 10)
+				b.MouseButton1Click:Connect(function()
+					if c.Callback then
+						c.Callback()
+					end
+				end)
+				return b
+			end
+
+			function groupApi:AddParagraph(c)
+				c = c or {}
+				local card = row(96)
+				label(card, {
+					Text = c.Title or c.Name or "Info",
+					Font = Enum.Font.GothamSemibold,
+					TextSize = 12,
+				})
+				local body = label(card, {
+					Text = c.Content or c.Description or "",
+					TextColor3 = COLORS.muted,
+					TextSize = 10,
+					Font = Enum.Font.Gotham,
+					Size = UDim2.new(1, 0, 0, 56),
+					Position = UDim2.fromOffset(0, 20),
+					TextYAlignment = Enum.TextYAlignment.Top,
+				})
+				body.TextWrapped = true
+			end
+
+			function groupApi:AddColorPicker(c)
+				c = c or {}
+				local color = c.Default or COLORS.purple
+				local card = row(46)
+				label(card, {
+					Text = c.Name or "Color",
+					Font = Enum.Font.GothamSemibold,
+					TextSize = 12,
+					Size = UDim2.new(1, -40, 1, 0),
+				})
+				local swatch = button(card, {
+					Size = UDim2.fromOffset(26, 26),
+					Position = UDim2.new(1, 0, 0.5, 0),
+					AnchorPoint = Vector2.new(1, 0.5),
+					Text = "",
+					BackgroundColor3 = color,
+				})
+				corner(swatch, 8)
+				local presets = {
+					Color3.fromRGB(255, 70, 70),
+					Color3.fromRGB(255, 146, 48),
+					Color3.fromRGB(88, 214, 112),
+					Color3.fromRGB(64, 168, 255),
+					Color3.fromRGB(139, 83, 246),
+					Color3.fromRGB(255, 255, 255),
+				}
+				local idx = 1
+				swatch.MouseButton1Click:Connect(function()
+					idx = (idx % #presets) + 1
+					color = presets[idx]
+					swatch.BackgroundColor3 = color
+					if c.Callback then
+						task.spawn(c.Callback, color)
+					end
+				end)
+				return {
+					Get = function()
+						return color
+					end,
+					Set = function(_, col)
+						color = col
+						swatch.BackgroundColor3 = col
+					end,
+				}
+			end
+
+			groupApi.Toggle = groupToggle
+			groupApi.SetEnabled = function(_, v)
+				groupEnabled = v == true
+				if groupToggle then
+					groupToggle:Set(groupEnabled)
+				end
+			end
+			groupApi.GetEnabled = function()
+				return groupEnabled
+			end
 
 			return groupApi
 		end
@@ -1305,6 +1859,9 @@ function Obsidian:Create(config)
 			return state.toggleKey
 		end,
 		value = state.toggleKey,
+		apply = function(v)
+			state.toggleKey = v
+		end,
 		callback = function()
 			setVisible(not state.visible)
 		end,
@@ -1321,28 +1878,94 @@ end
 Obsidian.CreateWindow = Obsidian.Create
 
 ----------------------------------------------------------------------
--- Built-in feature helpers (ESP / Player / Combat)
+-- Built-in feature helpers (ESP / Player / Game)
 ----------------------------------------------------------------------
 
 local Feature = {}
+
+local R15_BONES = {
+	{ "Head", "UpperTorso" },
+	{ "UpperTorso", "LowerTorso" },
+	{ "UpperTorso", "LeftUpperArm" },
+	{ "LeftUpperArm", "LeftLowerArm" },
+	{ "LeftLowerArm", "LeftHand" },
+	{ "UpperTorso", "RightUpperArm" },
+	{ "RightUpperArm", "RightLowerArm" },
+	{ "RightLowerArm", "RightHand" },
+	{ "LowerTorso", "LeftUpperLeg" },
+	{ "LeftUpperLeg", "LeftLowerLeg" },
+	{ "LeftLowerLeg", "LeftFoot" },
+	{ "LowerTorso", "RightUpperLeg" },
+	{ "RightUpperLeg", "RightLowerLeg" },
+	{ "RightLowerLeg", "RightFoot" },
+}
+
+local R6_BONES = {
+	{ "Head", "Torso" },
+	{ "Torso", "Left Arm" },
+	{ "Torso", "Right Arm" },
+	{ "Torso", "Left Leg" },
+	{ "Torso", "Right Leg" },
+}
+
+local function makeLine(parent)
+	local f = Instance.new("Frame")
+	f.AnchorPoint = Vector2.new(0.5, 0)
+	f.BorderSizePixel = 0
+	f.BackgroundTransparency = 0.15
+	f.Visible = false
+	f.ZIndex = 40
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
+	return f
+end
+
+local function placeLine(line, a, b, color, thickness)
+	local delta = b - a
+	local len = delta.Magnitude
+	if len < 1 then
+		line.Visible = false
+		return
+	end
+	line.Visible = true
+	line.BackgroundColor3 = color
+	line.Size = UDim2.fromOffset(thickness or 2, len)
+	line.Position = UDim2.fromOffset(a.X, a.Y)
+	line.Rotation = math.deg(math.atan2(delta.Y, delta.X)) - 90
+end
+
+local function worldTo(cam, pos)
+	local v, on = cam:WorldToViewportPoint(pos)
+	return Vector2.new(v.X, v.Y), on and v.Z > 0
+end
 
 function Feature.ESP()
 	local settings = {
 		enabled = false,
 		box = true,
+		roundedBox = true,
 		health = true,
+		heartHealth = true,
 		name = true,
+		nickname = true,
 		distance = true,
 		tracer = false,
+		skeleton = false,
+		headGlow = true,
+		chams = false,
 		teamCheck = false,
 		maxDistance = 1000,
 		boxColor = Color3.fromRGB(64, 168, 255),
-		healthColor = Color3.fromRGB(80, 220, 120),
+		healthColor = Color3.fromRGB(255, 90, 120),
 		nameColor = Color3.fromRGB(255, 255, 255),
+		skeletonColor = Color3.fromRGB(180, 150, 255),
+		glowColor = Color3.fromRGB(126, 91, 232),
 	}
+
 	local gui
 	local drawings = {}
 	local conn
+	local charConns = {}
 
 	local function rootOf(char)
 		return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"))
@@ -1366,9 +1989,28 @@ function Feature.ESP()
 		if not d then
 			return
 		end
+		if d.maid then
+			for _, c in d.maid do
+				if typeof(c) == "RBXScriptConnection" then
+					c:Disconnect()
+				elseif typeof(c) == "Instance" then
+					c:Destroy()
+				end
+			end
+		end
 		for _, x in d do
 			if typeof(x) == "Instance" then
-				x:Destroy()
+				pcall(function()
+					x:Destroy()
+				end)
+			elseif typeof(x) == "table" then
+				for _, y in x do
+					if typeof(y) == "Instance" then
+						pcall(function()
+							y:Destroy()
+						end)
+					end
+				end
 			end
 		end
 		drawings[char] = nil
@@ -1376,74 +2018,157 @@ function Feature.ESP()
 
 	local function create(char, player)
 		local root = rootOf(char)
+		local head = char:FindFirstChild("Head")
 		if not root then
 			return
 		end
 		local host = ensure()
-		local hl = Instance.new("Highlight")
-		hl.FillTransparency = 0.85
-		hl.OutlineTransparency = 0
-		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.Adornee = char
-		hl.Parent = host
+		local maid = {}
+
+		local chams = Instance.new("Highlight")
+		chams.FillTransparency = 0.7
+		chams.OutlineTransparency = 0.2
+		chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		chams.Adornee = char
+		chams.Enabled = false
+		chams.Parent = host
+		table.insert(maid, chams)
 
 		local bb = Instance.new("BillboardGui")
 		bb.AlwaysOnTop = true
-		bb.Size = UDim2.fromOffset(140, 48)
-		bb.StudsOffset = Vector3.new(0, 3.4, 0)
-		bb.Adornee = root
+		bb.Size = UDim2.fromOffset(160, 64)
+		bb.StudsOffset = Vector3.new(0, 3.6, 0)
+		bb.Adornee = head or root
 		bb.Parent = host
+		table.insert(maid, bb)
 
 		local nameL = Instance.new("TextLabel")
 		nameL.BackgroundTransparency = 1
 		nameL.Size = UDim2.new(1, 0, 0, 14)
 		nameL.Font = Enum.Font.GothamBold
 		nameL.TextSize = 12
-		nameL.TextStrokeTransparency = 0.4
+		nameL.TextStrokeTransparency = 0.35
 		nameL.Parent = bb
 
-		local hpBg = Instance.new("Frame")
-		hpBg.Position = UDim2.fromOffset(0, 18)
-		hpBg.Size = UDim2.new(1, 0, 0, 5)
-		hpBg.BackgroundColor3 = Color3.fromRGB(30, 30, 34)
-		hpBg.BorderSizePixel = 0
-		hpBg.Parent = bb
-		Instance.new("UICorner", hpBg).CornerRadius = UDim.new(1, 0)
+		local nickL = Instance.new("TextLabel")
+		nickL.BackgroundTransparency = 1
+		nickL.Position = UDim2.fromOffset(0, 14)
+		nickL.Size = UDim2.new(1, 0, 0, 12)
+		nickL.Font = Enum.Font.Gotham
+		nickL.TextSize = 10
+		nickL.TextColor3 = Color3.fromRGB(180, 176, 190)
+		nickL.TextStrokeTransparency = 0.5
+		nickL.Parent = bb
 
-		local hp = Instance.new("Frame")
-		hp.Size = UDim2.fromScale(1, 1)
-		hp.BorderSizePixel = 0
-		hp.Parent = hpBg
-		Instance.new("UICorner", hp).CornerRadius = UDim.new(1, 0)
+		local heartL = Instance.new("TextLabel")
+		heartL.BackgroundTransparency = 1
+		heartL.Position = UDim2.fromOffset(0, 28)
+		heartL.Size = UDim2.new(1, 0, 0, 14)
+		heartL.Font = Enum.Font.GothamBold
+		heartL.TextSize = 12
+		heartL.TextStrokeTransparency = 0.35
+		heartL.Parent = bb
 
 		local distL = Instance.new("TextLabel")
 		distL.BackgroundTransparency = 1
-		distL.Position = UDim2.fromOffset(0, 28)
-		distL.Size = UDim2.new(1, 0, 0, 14)
+		distL.Position = UDim2.fromOffset(0, 44)
+		distL.Size = UDim2.new(1, 0, 0, 12)
 		distL.Font = Enum.Font.Gotham
-		distL.TextSize = 11
+		distL.TextSize = 10
 		distL.TextColor3 = Color3.fromRGB(190, 190, 198)
 		distL.TextStrokeTransparency = 0.5
 		distL.Parent = bb
 
-		local tracer = Instance.new("Frame")
-		tracer.AnchorPoint = Vector2.new(0.5, 0)
-		tracer.BackgroundTransparency = 0.2
-		tracer.BorderSizePixel = 0
-		tracer.Visible = false
-		tracer.Parent = host
-		Instance.new("UICorner", tracer).CornerRadius = UDim.new(1, 0)
+		local boxFrame = Instance.new("Frame")
+		boxFrame.BackgroundTransparency = 1
+		boxFrame.BorderSizePixel = 0
+		boxFrame.Visible = false
+		boxFrame.ZIndex = 35
+		boxFrame.Parent = host
+		local boxStroke = Instance.new("UIStroke")
+		boxStroke.Thickness = 1.5
+		boxStroke.Transparency = 0.1
+		boxStroke.Parent = boxFrame
+		local boxCorner = Instance.new("UICorner")
+		boxCorner.CornerRadius = UDim.new(0, 8)
+		boxCorner.Parent = boxFrame
+		table.insert(maid, boxFrame)
+
+		local tracer = makeLine(host)
+		table.insert(maid, tracer)
+
+		local bones = {}
+		for _ = 1, 16 do
+			local ln = makeLine(host)
+			table.insert(bones, ln)
+			table.insert(maid, ln)
+		end
+
+		local glow
+		if head then
+			glow = Instance.new("PointLight")
+			glow.Name = "ObsidianHeadGlow"
+			glow.Brightness = 1.4
+			glow.Range = 8
+			glow.Shadows = false
+			glow.Parent = head
+			table.insert(maid, glow)
+		end
+
+		table.insert(maid, char.AncestryChanged:Connect(function(_, parent)
+			if not parent then
+				clear(char)
+			end
+		end))
 
 		drawings[char] = {
-			hl = hl,
+			maid = maid,
+			chams = chams,
 			bb = bb,
 			nameL = nameL,
-			hpBg = hpBg,
-			hp = hp,
+			nickL = nickL,
+			heartL = heartL,
 			distL = distL,
+			box = boxFrame,
+			boxStroke = boxStroke,
+			boxCorner = boxCorner,
 			tracer = tracer,
+			bones = bones,
+			glow = glow,
 			player = player,
+			char = char,
 		}
+	end
+
+	local function getBounds(char, cam)
+		local points = {}
+		for _, part in char:GetChildren() do
+			if part:IsA("BasePart") then
+				local cf, size = part.CFrame, part.Size
+				for _, ox in { -0.5, 0.5 } do
+					for _, oy in { -0.5, 0.5 } do
+						for _, oz in { -0.5, 0.5 } do
+							local world = (cf * CFrame.new(size.X * ox, size.Y * oy, size.Z * oz)).Position
+							local v, on = worldTo(cam, world)
+							if on then
+								table.insert(points, v)
+							end
+						end
+					end
+				end
+			end
+		end
+		if #points < 2 then
+			return nil
+		end
+		local minX, minY = math.huge, math.huge
+		local maxX, maxY = -math.huge, -math.huge
+		for _, p in points do
+			minX, minY = math.min(minX, p.X), math.min(minY, p.Y)
+			maxX, maxY = math.max(maxX, p.X), math.max(maxY, p.Y)
+		end
+		local padAmt = 4
+		return Vector2.new(minX - padAmt, minY - padAmt), Vector2.new(maxX - minX + padAmt * 2, maxY - minY + padAmt * 2)
 	end
 
 	local function step()
@@ -1452,7 +2177,8 @@ function Feature.ESP()
 			return
 		end
 		local myRoot = rootOf(LocalPlayer.Character)
-		local seen = {}
+		local alive = {}
+
 		if settings.enabled then
 			for _, plr in Players:GetPlayers() do
 				if plr ~= LocalPlayer then
@@ -1463,41 +2189,92 @@ function Feature.ESP()
 					if not skip and char and hum and root and hum.Health > 0 then
 						local dist = myRoot and (root.Position - myRoot.Position).Magnitude or 0
 						if dist <= settings.maxDistance then
-							seen[char] = true
+							alive[char] = true
 							if not drawings[char] then
 								create(char, plr)
 							end
 							local d = drawings[char]
-							if d then
-								d.hl.Enabled = settings.box
-								d.hl.OutlineColor = settings.boxColor
-								d.hl.FillColor = settings.boxColor
-								d.bb.Enabled = settings.name or settings.health or settings.distance
-								d.nameL.Visible = settings.name
-								d.nameL.Text = plr.DisplayName
-								d.nameL.TextColor3 = settings.nameColor
-								d.hpBg.Visible = settings.health
-								local ratio = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
-								d.hp.Size = UDim2.fromScale(ratio, 1)
-								d.hp.BackgroundColor3 = settings.healthColor
-								d.distL.Visible = settings.distance
-								d.distL.Text = string.format("%dm", math.floor(dist))
-								if settings.tracer then
-									local sp, on = cam:WorldToViewportPoint(root.Position)
-									if on then
-										local origin = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y)
-										local target = Vector2.new(sp.X, sp.Y)
-										local delta = target - origin
-										d.tracer.Visible = true
-										d.tracer.Size = UDim2.fromOffset(2, delta.Magnitude)
-										d.tracer.Position = UDim2.fromOffset(origin.X, origin.Y)
-										d.tracer.Rotation = math.deg(math.atan2(delta.Y, delta.X)) - 90
-										d.tracer.BackgroundColor3 = settings.boxColor
-									else
-										d.tracer.Visible = false
-									end
+							if not d then
+								continue
+							end
+
+							d.chams.Enabled = settings.chams
+							d.chams.OutlineColor = settings.boxColor
+							d.chams.FillColor = settings.boxColor
+
+							local showTag = settings.name or settings.nickname or settings.health or settings.distance
+							d.bb.Enabled = showTag
+							d.nameL.Visible = settings.name
+							d.nameL.Text = plr.DisplayName
+							d.nameL.TextColor3 = settings.nameColor
+							d.nickL.Visible = settings.nickname
+							d.nickL.Text = "@" .. plr.Name
+							d.heartL.Visible = settings.health
+							local hp = math.floor(hum.Health + 0.5)
+							local maxHp = math.floor(hum.MaxHealth + 0.5)
+							if settings.heartHealth then
+								d.heartL.Text = string.format("♥ %d / %d", hp, maxHp)
+							else
+								d.heartL.Text = string.format("%d / %d", hp, maxHp)
+							end
+							d.heartL.TextColor3 = settings.healthColor
+							d.distL.Visible = settings.distance
+							d.distL.Text = string.format("%dm", math.floor(dist))
+
+							if d.glow then
+								d.glow.Enabled = settings.headGlow
+								d.glow.Color = settings.glowColor
+							end
+
+							-- rounded 2D box
+							if settings.box then
+								local pos, size = getBounds(char, cam)
+								if pos and size then
+									d.box.Visible = true
+									d.box.Position = UDim2.fromOffset(pos.X, pos.Y)
+									d.box.Size = UDim2.fromOffset(math.max(size.X, 8), math.max(size.Y, 8))
+									d.boxStroke.Color = settings.boxColor
+									d.boxCorner.CornerRadius = UDim.new(0, settings.roundedBox and 8 or 2)
+								else
+									d.box.Visible = false
+								end
+							else
+								d.box.Visible = false
+							end
+
+							if settings.tracer then
+								local sp, on = worldTo(cam, root.Position)
+								if on then
+									local origin = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y)
+									placeLine(d.tracer, origin, sp, settings.boxColor, 2)
 								else
 									d.tracer.Visible = false
+								end
+							else
+								d.tracer.Visible = false
+							end
+
+							-- skeleton
+							local pairs = char:FindFirstChild("UpperTorso") and R15_BONES or R6_BONES
+							for i, bone in d.bones do
+								bone.Visible = false
+							end
+							if settings.skeleton then
+								local bi = 0
+								for _, pair in pairs do
+									local aPart = char:FindFirstChild(pair[1])
+									local bPart = char:FindFirstChild(pair[2])
+									if aPart and bPart and aPart:IsA("BasePart") and bPart:IsA("BasePart") then
+										local a, aOn = worldTo(cam, aPart.Position)
+										local b, bOn = worldTo(cam, bPart.Position)
+										if aOn and bOn then
+											bi += 1
+											local line = d.bones[bi]
+											if line then
+												placeLine(line, a, b, settings.skeletonColor, 2)
+											end
+										end
+									end
 								end
 							end
 						end
@@ -1505,8 +2282,9 @@ function Feature.ESP()
 				end
 			end
 		end
+
 		for char in drawings do
-			if not seen[char] or not settings.enabled then
+			if not settings.enabled or not alive[char] then
 				clear(char)
 			end
 		end
@@ -1516,6 +2294,12 @@ function Feature.ESP()
 		Set = function(_, patch)
 			for k, v in patch do
 				settings[k] = v
+			end
+			-- keep drawings alive when only style flags change
+			if patch.enabled == false then
+				for char in drawings do
+					clear(char)
+				end
 			end
 		end,
 		Get = function()
@@ -1527,12 +2311,21 @@ function Feature.ESP()
 			end
 			ensure()
 			conn = RunService.RenderStepped:Connect(step)
+			table.insert(charConns, Players.PlayerRemoving:Connect(function(plr)
+				if plr.Character then
+					clear(plr.Character)
+				end
+			end))
 		end,
 		Stop = function()
 			if conn then
 				conn:Disconnect()
 				conn = nil
 			end
+			for _, c in charConns do
+				c:Disconnect()
+			end
+			table.clear(charConns)
 			for char in drawings do
 				clear(char)
 			end
@@ -1548,14 +2341,19 @@ function Feature.Player()
 	local settings = {
 		speedEnabled = false,
 		speed = 32,
+		speedMethod = "WalkSpeed", -- WalkSpeed | CFrame | Velocity
 		jumpEnabled = false,
 		jumpPower = 75,
 		infiniteJump = false,
 		noclip = false,
+		fly = false,
+		flySpeed = 50,
 	}
 	local defaults = { walk = 16, jump = 50 }
 	local conns = {}
 	local noclipParts = {}
+	local bodyGyro, bodyVel
+	local keys = { W = false, A = false, S = false, D = false, Space = false, LeftControl = false }
 
 	local function hum()
 		return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -1564,12 +2362,47 @@ function Feature.Player()
 		return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	end
 
-	local function apply()
+	local function cleanupMovers()
+		if bodyGyro then
+			bodyGyro:Destroy()
+			bodyGyro = nil
+		end
+		if bodyVel then
+			bodyVel:Destroy()
+			bodyVel = nil
+		end
+	end
+
+	local function ensureFly()
+		local r = root()
+		if not r then
+			return
+		end
+		if not bodyGyro or bodyGyro.Parent ~= r then
+			cleanupMovers()
+			bodyGyro = Instance.new("BodyGyro")
+			bodyGyro.P = 9e4
+			bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+			bodyGyro.Parent = r
+			bodyVel = Instance.new("BodyVelocity")
+			bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+			bodyVel.Velocity = Vector3.zero
+			bodyVel.Parent = r
+		end
+	end
+
+	local function applyWalkJump()
 		local h = hum()
 		if not h then
 			return
 		end
-		h.WalkSpeed = settings.speedEnabled and settings.speed or defaults.walk
+		if settings.speedEnabled and settings.speedMethod == "WalkSpeed" and not settings.fly then
+			h.WalkSpeed = settings.speed
+		elseif not settings.speedEnabled or settings.speedMethod ~= "WalkSpeed" then
+			if not settings.fly then
+				h.WalkSpeed = defaults.walk
+			end
+		end
 		h.UseJumpPower = true
 		h.JumpPower = settings.jumpEnabled and settings.jumpPower or defaults.jump
 	end
@@ -1596,6 +2429,71 @@ function Feature.Player()
 		end
 	end
 
+	local function flyStep(dt)
+		local r = root()
+		local h = hum()
+		local cam = Workspace.CurrentCamera
+		if not (r and h and cam) then
+			return
+		end
+		ensureFly()
+		h.PlatformStand = true
+		bodyGyro.CFrame = cam.CFrame
+		local dir = Vector3.zero
+		local look = cam.CFrame.LookVector
+		local right = cam.CFrame.RightVector
+		if keys.W then
+			dir += look
+		end
+		if keys.S then
+			dir -= look
+		end
+		if keys.A then
+			dir -= right
+		end
+		if keys.D then
+			dir += right
+		end
+		if keys.Space then
+			dir += Vector3.yAxis
+		end
+		if keys.LeftControl then
+			dir -= Vector3.yAxis
+		end
+		if dir.Magnitude > 0 then
+			dir = dir.Unit * settings.flySpeed
+		end
+		bodyVel.Velocity = dir
+	end
+
+	local function speedStep(dt)
+		if settings.fly or not settings.speedEnabled then
+			return
+		end
+		local r = root()
+		local h = hum()
+		local cam = Workspace.CurrentCamera
+		if not (r and h and cam) then
+			return
+		end
+		local method = settings.speedMethod
+		if method == "WalkSpeed" then
+			h.WalkSpeed = settings.speed
+			return
+		end
+		local move = h.MoveDirection
+		if move.Magnitude < 0.05 then
+			return
+		end
+		if method == "CFrame" then
+			r.CFrame += move * settings.speed * dt
+		elseif method == "Velocity" then
+			local v = r.AssemblyLinearVelocity
+			local horiz = move * settings.speed
+			r.AssemblyLinearVelocity = Vector3.new(horiz.X, v.Y, horiz.Z)
+		end
+	end
+
 	return {
 		Set = function(_, patch)
 			for k, v in patch do
@@ -1604,7 +2502,25 @@ function Feature.Player()
 			if patch.noclip ~= nil then
 				setNoclip(patch.noclip)
 			end
-			apply()
+			if patch.fly == false or (patch.fly == nil and settings.fly == false) then
+				if patch.fly == false then
+					cleanupMovers()
+					local h = hum()
+					if h then
+						h.PlatformStand = false
+					end
+				end
+			end
+			if settings.fly then
+				ensureFly()
+			else
+				cleanupMovers()
+				local h = hum()
+				if h then
+					h.PlatformStand = false
+				end
+			end
+			applyWalkJump()
 		end,
 		Get = function()
 			return settings
@@ -1619,24 +2535,32 @@ function Feature.Player()
 					defaults.walk = h.WalkSpeed
 					defaults.jump = h.JumpPower
 				end
-				apply()
+				applyWalkJump()
 			end
 			table.insert(conns, LocalPlayer.CharacterAdded:Connect(function(char)
 				table.clear(noclipParts)
+				cleanupMovers()
 				task.defer(function()
 					local h = char:WaitForChild("Humanoid", 5)
 					if h then
 						defaults.walk = h.WalkSpeed
 						defaults.jump = h.JumpPower
 					end
-					apply()
+					applyWalkJump()
 					if settings.noclip then
 						setNoclip(true)
 					end
+					if settings.fly then
+						ensureFly()
+					end
 				end)
 			end))
-			table.insert(conns, RunService.Heartbeat:Connect(function()
-				apply()
+			table.insert(conns, RunService.Heartbeat:Connect(function(dt)
+				applyWalkJump()
+				speedStep(dt)
+				if settings.fly then
+					flyStep(dt)
+				end
 				if settings.noclip and LocalPlayer.Character then
 					for _, p in LocalPlayer.Character:GetDescendants() do
 						if p:IsA("BasePart") then
@@ -1646,7 +2570,7 @@ function Feature.Player()
 				end
 			end))
 			table.insert(conns, UserInputService.JumpRequest:Connect(function()
-				if not settings.infiniteJump then
+				if not settings.infiniteJump or settings.fly then
 					return
 				end
 				local h, r = hum(), root()
@@ -1658,18 +2582,120 @@ function Feature.Player()
 					)
 				end
 			end))
+			table.insert(conns, UserInputService.InputBegan:Connect(function(input, gp)
+				if gp then
+					return
+				end
+				local k = input.KeyCode
+				if k == Enum.KeyCode.W then
+					keys.W = true
+				elseif k == Enum.KeyCode.A then
+					keys.A = true
+				elseif k == Enum.KeyCode.S then
+					keys.S = true
+				elseif k == Enum.KeyCode.D then
+					keys.D = true
+				elseif k == Enum.KeyCode.Space then
+					keys.Space = true
+				elseif k == Enum.KeyCode.LeftControl then
+					keys.LeftControl = true
+				end
+			end))
+			table.insert(conns, UserInputService.InputEnded:Connect(function(input)
+				local k = input.KeyCode
+				if k == Enum.KeyCode.W then
+					keys.W = false
+				elseif k == Enum.KeyCode.A then
+					keys.A = false
+				elseif k == Enum.KeyCode.S then
+					keys.S = false
+				elseif k == Enum.KeyCode.D then
+					keys.D = false
+				elseif k == Enum.KeyCode.Space then
+					keys.Space = false
+				elseif k == Enum.KeyCode.LeftControl then
+					keys.LeftControl = false
+				end
+			end))
 		end,
 		Stop = function()
 			for _, c in conns do
 				c:Disconnect()
 			end
 			table.clear(conns)
+			cleanupMovers()
 			setNoclip(false)
 			local h = hum()
 			if h then
+				h.PlatformStand = false
 				h.WalkSpeed = defaults.walk
 				h.JumpPower = defaults.jump
 			end
+		end,
+	}
+end
+
+function Feature.Game()
+	local function info()
+		return {
+			placeId = game.PlaceId,
+			jobId = game.JobId,
+			placeName = (function()
+				local ok, data = pcall(function()
+					return MarketplaceService:GetProductInfo(game.PlaceId)
+				end)
+				if ok and data then
+					return data.Name
+				end
+				return tostring(game.PlaceId)
+			end)(),
+			players = #Players:GetPlayers(),
+			maxPlayers = Players.MaxPlayers,
+			displayName = LocalPlayer.DisplayName,
+			userName = LocalPlayer.Name,
+		}
+	end
+
+	return {
+		Info = info,
+		GetInfo = info,
+		Rejoin = function()
+			pcall(function()
+				TeleportService:Teleport(game.PlaceId, LocalPlayer)
+			end)
+		end,
+		Hop = function()
+			-- soft hop: rejoin same place (new server when possible)
+			pcall(function()
+				TeleportService:Teleport(game.PlaceId, LocalPlayer)
+			end)
+		end,
+		CopyJobId = function()
+			local id = game.JobId
+			local ok = pcall(function()
+				if setclipboard then
+					setclipboard(id)
+				elseif toclipboard then
+					toclipboard(id)
+				end
+			end)
+			return ok, id
+		end,
+		CopyPlaceId = function()
+			local id = tostring(game.PlaceId)
+			local ok = pcall(function()
+				if setclipboard then
+					setclipboard(id)
+				elseif toclipboard then
+					toclipboard(id)
+				end
+			end)
+			return ok, id
+		end,
+		TeleportToPlace = function(_, placeId)
+			pcall(function()
+				TeleportService:Teleport(tonumber(placeId) or game.PlaceId, LocalPlayer)
+			end)
 		end,
 	}
 end
