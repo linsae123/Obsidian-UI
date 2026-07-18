@@ -30,7 +30,7 @@ local TeleportService = game:GetService("TeleportService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local Obsidian = {
-	Version = "1.2.1",
+	Version = "1.2.3",
 	_capturing = false,
 	SourceUrl = nil,
 }
@@ -537,7 +537,8 @@ function Obsidian:Create(config)
 	navFrame.Size = UDim2.new(1, -20, 1, -20)
 	navFrame.BackgroundTransparency = 1
 	navFrame.BorderSizePixel = 0
-	navFrame.ScrollBarThickness = 2
+	navFrame.ScrollBarThickness = 0
+	navFrame.ScrollBarImageTransparency = 1
 	navFrame.CanvasSize = UDim2.new()
 	navFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	navFrame.Parent = sidebar
@@ -570,7 +571,8 @@ function Obsidian:Create(config)
 	leftCol.Size = UDim2.new(0.5, -8, 1, 0)
 	leftCol.BackgroundTransparency = 1
 	leftCol.BorderSizePixel = 0
-	leftCol.ScrollBarThickness = 3
+	leftCol.ScrollBarThickness = 0
+	leftCol.ScrollBarImageTransparency = 1
 	leftCol.CanvasSize = UDim2.new()
 	leftCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	leftCol.ClipsDescendants = false
@@ -583,7 +585,8 @@ function Obsidian:Create(config)
 	rightCol.Size = UDim2.new(0.5, -8, 1, 0)
 	rightCol.BackgroundTransparency = 1
 	rightCol.BorderSizePixel = 0
-	rightCol.ScrollBarThickness = 3
+	rightCol.ScrollBarThickness = 0
+	rightCol.ScrollBarImageTransparency = 1
 	rightCol.CanvasSize = UDim2.new()
 	rightCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	rightCol.ClipsDescendants = false
@@ -1418,58 +1421,119 @@ function Obsidian:Create(config)
 			img.ImageTransparency = 0.05
 			img.Parent = card
 
-			if cfg.Image then
-				img.Image = cfg.Image
-			else
-				-- Place primary thumbnail (PlaceId). GameIcon must use GameId.
-				img.Image = "rbxthumb://type=GameThumbnail&id="
-					.. tostring(game.PlaceId)
-					.. "&w=768&h=432"
-				task.spawn(function()
-					local apis = {
-						"https://thumbnails.roblox.com/v1/games/"
-							.. tostring(game.GameId)
-							.. "/thumbnails?size=768x432&format=Png&count=1",
-						"https://thumbnails.roblox.com/v1/places/gameicons?placeIds="
-							.. tostring(game.PlaceId)
-							.. "&returnPolicy=PlaceHolder&size=512x512&format=Png",
-					}
-					for _, api in apis do
-						local ok, raw = pcall(function()
-							return game:HttpGet(api)
-						end)
-						if ok and type(raw) == "string" then
-							local ok2, data = pcall(function()
-								return HttpService:JSONDecode(raw)
-							end)
-							if ok2 and typeof(data) == "table" and data.data then
-								for _, entry in data.data do
-									local list = entry.thumbnails
-									if typeof(list) == "table" then
-										for _, thumb in list do
-											if typeof(thumb) == "table" and type(thumb.imageUrl) == "string" and thumb.imageUrl ~= "" then
-												if img.Parent then
-													img.Image = thumb.imageUrl
-												end
-												return
-											end
-										end
-									elseif type(entry.imageUrl) == "string" and entry.imageUrl ~= "" then
-										if img.Parent then
-											img.Image = entry.imageUrl
-										end
-										return
-									end
+			local function httpGet(url)
+				local ok, body = pcall(function()
+					return game:HttpGet(url)
+				end)
+				if ok and type(body) == "string" and #body > 2 then
+					return body
+				end
+				local reqFns = {}
+				pcall(function()
+					table.insert(reqFns, request)
+				end)
+				pcall(function()
+					table.insert(reqFns, http_request)
+				end)
+				pcall(function()
+					if syn and syn.request then
+						table.insert(reqFns, syn.request)
+					end
+				end)
+				pcall(function()
+					if http and http.request then
+						table.insert(reqFns, http.request)
+					end
+				end)
+				for _, req in reqFns do
+					if typeof(req) == "function" then
+						local ok2, res = pcall(req, { Url = url, Method = "GET" })
+						if ok2 and typeof(res) == "table" then
+							local b = res.Body or res.body
+							if type(b) == "string" and #b > 2 then
+								return b
+							end
+						end
+					end
+				end
+				return nil
+			end
+
+			local function pickImageUrl(payload)
+				if typeof(payload) ~= "table" or typeof(payload.data) ~= "table" then
+					return nil
+				end
+				for _, entry in payload.data do
+					if typeof(entry) == "table" then
+						if type(entry.imageUrl) == "string" and entry.imageUrl ~= "" and entry.state ~= "Error" then
+							return entry.imageUrl
+						end
+						if typeof(entry.thumbnails) == "table" then
+							for _, thumb in entry.thumbnails do
+								if typeof(thumb) == "table"
+									and type(thumb.imageUrl) == "string"
+									and thumb.imageUrl ~= ""
+									and thumb.state ~= "Error"
+								then
+									return thumb.imageUrl
 								end
 							end
 						end
 					end
-					-- last resort: universe icon
-					if img.Parent then
-						img.Image = "rbxthumb://type=GameIcon&id="
-							.. tostring(game.GameId)
-							.. "&w=512&h=512"
+				end
+				return nil
+			end
+
+			local function setBanner(url)
+				if img.Parent and type(url) == "string" and url ~= "" then
+					img.Image = url
+				end
+			end
+
+			if cfg.Image then
+				setBanner(cfg.Image)
+			else
+				local placeId = tonumber(cfg.PlaceId) or game.PlaceId
+				local universeId = tonumber(cfg.UniverseId) or game.GameId
+				-- quick placeholder while API resolves
+				setBanner(
+					"rbxthumb://type=GameThumbnail&id=" .. tostring(placeId) .. "&w=768&h=432"
+				)
+				task.spawn(function()
+					local endpoints = {
+						-- wide place/game media (best for banner)
+						string.format(
+							"https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=%s&countPerUniverse=1&size=768x432&format=Png&isCircular=false",
+							tostring(universeId)
+						),
+						-- place icon via PlaceId
+						string.format(
+							"https://thumbnails.roblox.com/v1/places/gameicons?placeIds=%s&returnPolicy=PlaceHolder&size=512x512&format=Png",
+							tostring(placeId)
+						),
+						-- universe icon fallback
+						string.format(
+							"https://thumbnails.roblox.com/v1/games/icons?universeIds=%s&returnPolicy=PlaceHolder&size=512x512&format=Png",
+							tostring(universeId)
+						),
+					}
+					for _, endpoint in endpoints do
+						local raw = httpGet(endpoint)
+						if raw then
+							local ok, decoded = pcall(function()
+								return HttpService:JSONDecode(raw)
+							end)
+							if ok then
+								local imageUrl = pickImageUrl(decoded)
+								if imageUrl then
+									setBanner(imageUrl)
+									return
+								end
+							end
+						end
 					end
+					-- final rbxthumb fallbacks
+					setBanner("rbxthumb://type=GameIcon&id=" .. tostring(universeId) .. "&w=512&h=512")
 				end)
 			end
 
@@ -3169,25 +3233,77 @@ function Obsidian.Reload(url)
 end
 
 local function queueTeleportScript(url)
+	url = tostring(url or "")
+	if url == "" then
+		return false
+	end
 	local code = string.format(
-		'loadstring(game:HttpGet(%q))()',
+		[[
+local url = %q
+local genv = (getgenv and getgenv()) or _G
+if genv.__ObsidianTeleportBooting then return end
+genv.__ObsidianTeleportBooting = true
+task.defer(function()
+	local ok, err = pcall(function()
+		loadstring(game:HttpGet(url))()
+	end)
+	if not ok then
+		warn("[Obsidian] teleport reload failed:", err)
+	end
+	task.delay(2, function()
+		genv.__ObsidianTeleportBooting = nil
+	end)
+end)
+]],
 		url
 	)
+
 	local queued = false
-	for _, fn in {
-		queue_on_teleport,
-		queueonteleport,
-		syn and syn.queue_on_teleport,
-		fluxus and fluxus.queue_on_teleport,
-	} do
+	local function try(fn)
 		if typeof(fn) == "function" then
 			local ok = pcall(fn, code)
 			if ok then
 				queued = true
-				break
+				return true
 			end
 		end
+		return false
 	end
+
+	-- probe common executor globals without erroring if missing
+	pcall(function()
+		try(queue_on_teleport)
+	end)
+	pcall(function()
+		try(queueonteleport)
+	end)
+	pcall(function()
+		try(queueteleport)
+	end)
+	pcall(function()
+		if syn then
+			try(syn.queue_on_teleport)
+		end
+	end)
+	pcall(function()
+		if fluxus then
+			try(fluxus.queue_on_teleport)
+		end
+	end)
+	pcall(function()
+		if getgenv then
+			local g = getgenv()
+			try(g.queue_on_teleport)
+			try(g.queueonteleport)
+		end
+	end)
+
+	pcall(function()
+		local genv = (getgenv and getgenv()) or _G
+		genv.__ObsidianHubUrl = url
+		genv.__ObsidianTeleportReload = true
+	end)
+
 	return queued
 end
 
@@ -3200,24 +3316,57 @@ function Obsidian.EnableTeleportReload(url)
 	end
 	Obsidian.SourceUrl = url
 	Obsidian._teleportReload = true
+
 	local ok = queueTeleportScript(url)
-	if not Obsidian._teleportConn then
-		pcall(function()
-			Obsidian._teleportConn = TeleportService.LocalPlayerTeleporting:Connect(function()
-				if Obsidian._teleportReload and Obsidian.SourceUrl then
-					queueTeleportScript(Obsidian.SourceUrl)
-				end
-			end)
-		end)
+	if not ok then
+		warn("[Obsidian] queue_on_teleport not found on this executor — server-hop reload unavailable")
 	end
+
+	-- re-queue right before teleport when possible
+	if Obsidian._teleportConn then
+		pcall(function()
+			Obsidian._teleportConn:Disconnect()
+		end)
+		Obsidian._teleportConn = nil
+	end
+	pcall(function()
+		Obsidian._teleportConn = TeleportService.LocalPlayerTeleporting:Connect(function()
+			if Obsidian._teleportReload and Obsidian.SourceUrl then
+				queueTeleportScript(Obsidian.SourceUrl)
+			end
+		end)
+	end)
+
+	-- some executors drop the queue — keep refreshing while enabled
+	if Obsidian._teleportKeepalive then
+		task.cancel(Obsidian._teleportKeepalive)
+		Obsidian._teleportKeepalive = nil
+	end
+	Obsidian._teleportKeepalive = task.spawn(function()
+		while Obsidian._teleportReload do
+			queueTeleportScript(Obsidian.SourceUrl or url)
+			task.wait(8)
+		end
+	end)
+
 	return ok
 end
 
 function Obsidian.DisableTeleportReload()
 	Obsidian._teleportReload = false
+	pcall(function()
+		local genv = (getgenv and getgenv()) or _G
+		genv.__ObsidianTeleportReload = false
+	end)
 	if Obsidian._teleportConn then
-		Obsidian._teleportConn:Disconnect()
+		pcall(function()
+			Obsidian._teleportConn:Disconnect()
+		end)
 		Obsidian._teleportConn = nil
+	end
+	if Obsidian._teleportKeepalive then
+		task.cancel(Obsidian._teleportKeepalive)
+		Obsidian._teleportKeepalive = nil
 	end
 end
 
