@@ -587,32 +587,31 @@ function Obsidian:Create(config)
 		query = string.lower(tostring(query or ""))
 		state.searchQuery = query
 		local pageHits = {}
-		for _, entry in state.searchables do
-			if not entry.inst or not entry.inst.Parent then
-				continue
-			end
-			local show = query == "" or string.find(entry.text, query, 1, true) ~= nil
-			entry.inst.Visible = show
-			if show then
-				if entry.page then
-					pageHits[entry.page] = true
-				end
-				-- reveal parent group / column frames
-				local p = entry.inst.Parent
-				local guard = 0
-				while p and guard < 8 do
-					if p:IsA("GuiObject") then
-						p.Visible = true
+		for _, entry in ipairs(state.searchables) do
+			if entry.inst and entry.inst.Parent then
+				local show = query == "" or string.find(entry.text, query, 1, true) ~= nil
+				entry.inst.Visible = show
+				if show then
+					if entry.page then
+						pageHits[entry.page] = true
 					end
-					if p.Name == "Window" or p:IsA("ScreenGui") then
-						break
+					-- reveal parent group / column frames
+					local p = entry.inst.Parent
+					local guard = 0
+					while p and guard < 8 do
+						if p:IsA("GuiObject") then
+							p.Visible = true
+						end
+						if p.Name == "Window" or p:IsA("ScreenGui") then
+							break
+						end
+						p = p.Parent
+						guard = guard + 1
 					end
-					p = p.Parent
-					guard += 1
 				end
 			end
 		end
-		for _, p in state.pages do
+		for _, p in ipairs(state.pages) do
 			if p.navBtn then
 				local hit = query == "" or pageHits[p] == true or string.find(string.lower(p.name), query, 1, true) ~= nil
 				p.navBtn.Visible = hit
@@ -757,70 +756,66 @@ function Obsidian:Create(config)
 		if not state.hotkeyPad then
 			return
 		end
-		for _, child in state.hotkeyPad:GetChildren() do
+		for _, child in ipairs(state.hotkeyPad:GetChildren()) do
 			if child:IsA("Frame") and child.Name == "Row" then
 				child:Destroy()
 			end
 		end
 		local order = 1
-		for _, entry in state.keybinds do
-			if not isListed(entry) then
-				continue
-			end
-			-- only show active feature binds (UI Toggle always shown)
-			if entry.name ~= "UI Toggle" and entry.requireActive and not entry.active then
-				continue
-			end
-			order += 1
-			local row = Instance.new("Frame")
-			row.Name = "Row"
-			row.Size = UDim2.new(1, 0, 0, 22)
-			row.BackgroundTransparency = 1
-			row.LayoutOrder = order
-			row.ZIndex = 55
-			row.Parent = state.hotkeyPad
+		for _, entry in ipairs(state.keybinds) do
+			local hideFeature = entry.name ~= "UI Toggle" and entry.requireActive and not entry.active
+			if isListed(entry) and not hideFeature then
+				order = order + 1
+				local row = Instance.new("Frame")
+				row.Name = "Row"
+				row.Size = UDim2.new(1, 0, 0, 22)
+				row.BackgroundTransparency = 1
+				row.LayoutOrder = order
+				row.ZIndex = 55
+				row.Parent = state.hotkeyPad
 
-			label(row, {
-				Text = entry.mode or "Toggle",
-				TextColor3 = COLORS.muted,
-				TextSize = 11,
-				Font = Enum.Font.Gotham,
-				Size = UDim2.fromOffset(52, 22),
-				ZIndex = 56,
-			})
-			label(row, {
-				Text = entry.name,
-				Font = Enum.Font.GothamBold,
-				TextSize = 12,
-				Size = UDim2.new(1, -120, 1, 0),
-				Position = UDim2.fromOffset(56, 0),
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				ZIndex = 56,
-			})
+				label(row, {
+					Text = entry.mode or "Toggle",
+					TextColor3 = COLORS.muted,
+					TextSize = 11,
+					Font = Enum.Font.Gotham,
+					Size = UDim2.fromOffset(52, 22),
+					ZIndex = 56,
+				})
+				label(row, {
+					Text = entry.name,
+					Font = Enum.Font.GothamBold,
+					TextSize = 12,
+					Size = UDim2.new(1, -120, 1, 0),
+					Position = UDim2.fromOffset(56, 0),
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					ZIndex = 56,
+				})
 
-			local current = entry.get and entry.get() or entry.value
-			makeKeybind(row, {
-				Default = current,
-				Width = 58,
-				TextSize = 10,
-				ZIndex = 57,
-				Position = UDim2.new(1, 0, 0.5, 0),
-				AnchorPoint = Vector2.new(1, 0.5),
-				OnChanged = function(v)
-					if entry.apply then
-						entry.apply(v)
-					elseif entry.kb then
-						entry.kb:Set(v, true)
-						entry.value = v
-						if entry.onChanged then
-							task.spawn(entry.onChanged, v)
+				local current = entry.get and entry.get() or entry.value
+				makeKeybind(row, {
+					Default = current,
+					Width = 58,
+					TextSize = 10,
+					ZIndex = 57,
+					Position = UDim2.new(1, 0, 0.5, 0),
+					AnchorPoint = Vector2.new(1, 0.5),
+					OnChanged = function(v)
+						if entry.apply then
+							entry.apply(v)
+						elseif entry.kb then
+							entry.kb:Set(v, true)
+							entry.value = v
+							if entry.onChanged then
+								task.spawn(entry.onChanged, v)
+							end
+						else
+							entry.value = v
 						end
-					else
-						entry.value = v
-					end
-					refreshHotkeys()
-				end,
-			})
+						refreshHotkeys()
+					end,
+				})
+			end
 		end
 	end
 
@@ -850,7 +845,7 @@ function Obsidian:Create(config)
 			rightCol.Size = UDim2.new(0.5, -8, 1, 0)
 		end
 
-		for _, p in state.pages do
+		for _, p in ipairs(state.pages) do
 			local show = p == page
 			p.left.Visible = show
 			p.right.Visible = show and not p.fullWidth
@@ -945,32 +940,32 @@ function Obsidian:Create(config)
 			end
 			return
 		end
-		for _, entry in state.keybinds do
-			if entry.listed == false then
-				continue
+		for _, entry in ipairs(state.keybinds) do
+			local skip = entry.listed == false
+			if not skip and entry.getListed and entry.getListed() == false then
+				skip = true
 			end
-			if entry.getListed and entry.getListed() == false then
-				continue
-			end
-			local val = entry.get and entry.get() or entry.value
-			if bindsMatch(val, input) then
-				local mode = string.lower(entry.mode or "toggle")
-				if mode == "toggle" then
-					entry.active = not entry.active
-					if entry.callback then
-						task.spawn(entry.callback, entry.active)
+			if not skip then
+				local val = entry.get and entry.get() or entry.value
+				if bindsMatch(val, input) then
+					local mode = string.lower(entry.mode or "toggle")
+					if mode == "toggle" then
+						entry.active = not entry.active
+						if entry.callback then
+							task.spawn(entry.callback, entry.active)
+						end
+					elseif mode == "press" or mode == "always" then
+						if entry.callback then
+							task.spawn(entry.callback, true)
+						end
+					elseif mode == "hold" then
+						entry.active = true
+						if entry.callback then
+							task.spawn(entry.callback, true)
+						end
 					end
-				elseif mode == "press" or mode == "always" then
-					if entry.callback then
-						task.spawn(entry.callback, true)
-					end
-				elseif mode == "hold" then
-					entry.active = true
-					if entry.callback then
-						task.spawn(entry.callback, true)
-					end
+					refreshHotkeys()
 				end
-				refreshHotkeys()
 			end
 		end
 	end)
@@ -979,7 +974,7 @@ function Obsidian:Create(config)
 		if Obsidian._capturing then
 			return
 		end
-		for _, entry in state.keybinds do
+		for _, entry in ipairs(state.keybinds) do
 			local val = entry.get and entry.get() or entry.value
 			if bindsMatch(val, input) and string.lower(entry.mode or "") == "hold" then
 				entry.active = false
@@ -1283,7 +1278,7 @@ function Obsidian:Create(config)
 				end
 			end
 
-			for i, opt in options do
+			for i, opt in ipairs(options) do
 				local optBtn = button(menu, {
 					Size = UDim2.new(1, 0, 0, 28),
 					Text = opt,
@@ -1532,7 +1527,7 @@ function Obsidian:Create(config)
 						table.insert(reqFns, http.request)
 					end
 				end)
-				for _, req in reqFns do
+				for _, req in ipairs(reqFns) do
 					if typeof(req) == "function" then
 						local ok2, res = pcall(req, { Url = url, Method = "GET" })
 						if ok2 and typeof(res) == "table" then
@@ -1550,13 +1545,13 @@ function Obsidian:Create(config)
 				if typeof(payload) ~= "table" or typeof(payload.data) ~= "table" then
 					return nil
 				end
-				for _, entry in payload.data do
+				for _, entry in ipairs(payload.data) do
 					if typeof(entry) == "table" then
 						if type(entry.imageUrl) == "string" and entry.imageUrl ~= "" and entry.state ~= "Error" then
 							return entry.imageUrl
 						end
 						if typeof(entry.thumbnails) == "table" then
-							for _, thumb in entry.thumbnails do
+							for _, thumb in ipairs(entry.thumbnails) do
 								if typeof(thumb) == "table"
 									and type(thumb.imageUrl) == "string"
 									and thumb.imageUrl ~= ""
@@ -1672,7 +1667,7 @@ function Obsidian:Create(config)
 						),
 					}
 
-					for _, endpoint in endpoints do
+					for _, endpoint in ipairs(endpoints) do
 						local raw = httpGet(endpoint)
 						if raw then
 							local ok, decoded = pcall(function()
@@ -1776,7 +1771,7 @@ function api:AddChangelog(cfg)
 				})
 			end
 
-			for i, item in items do
+			for i, item in ipairs(items) do
 				local kind = string.lower(tostring(item.Kind or item.Type or "add"))
 				local accent = item.Color
 					or (kind == "edit" or kind == "change") and Color3.fromRGB(230, 190, 70)
@@ -2134,7 +2129,7 @@ function api:AddChangelog(cfg)
 					end
 				end
 
-				for i, opt in options do
+				for i, opt in ipairs(options) do
 					local optBtn = button(menu, {
 						Size = UDim2.new(1, 0, 0, 26),
 						Text = opt,
@@ -2366,10 +2361,10 @@ function api:AddChangelog(cfg)
 				return leftApi
 			end
 			if leftCount <= rightCount then
-				leftCount += 1
+				leftCount = leftCount + 1
 				return leftApi
 			end
-			rightCount += 1
+			rightCount = rightCount + 1
 			return rightApi
 		end
 
@@ -2390,10 +2385,10 @@ function api:AddChangelog(cfg)
 				local side = cfg2.Side and string.lower(tostring(cfg2.Side))
 				local host
 				if page.fullWidth or side == "left" then
-					leftCount += 1
+					leftCount = leftCount + 1
 					host = leftApi
 				elseif side == "right" then
-					rightCount += 1
+					rightCount = rightCount + 1
 					host = rightApi
 				else
 					host = pick()
@@ -2592,7 +2587,7 @@ function Feature.ESP()
 		if not char then
 			return nil
 		end
-		for _, p in char:GetChildren() do
+		for _, p in ipairs(char:GetChildren()) do
 			if p:IsA("BasePart") then
 				return p
 			end
@@ -2640,7 +2635,7 @@ function Feature.ESP()
 			return
 		end
 		if d.maid then
-			for _, c in d.maid do
+			for _, c in ipairs(d.maid) do
 				if typeof(c) == "RBXScriptConnection" then
 					c:Disconnect()
 				elseif typeof(c) == "Instance" then
@@ -2654,18 +2649,18 @@ function Feature.ESP()
 			destroyLine(d.tracer)
 		end
 		if d.bones then
-			for _, bone in d.bones do
+			for _, bone in ipairs(d.bones) do
 				destroyLine(bone)
 			end
 		end
 		if d.corners then
-			for _, c in d.corners do
+			for _, c in ipairs(d.corners) do
 				if typeof(c) == "Instance" then
 					c:Destroy()
 				end
 			end
 		end
-		for _, key in { "chams", "bb", "box", "glow" } do
+		for _, key in ipairs({ "chams", "bb", "box", "glow" }) do
 			local x = d[key]
 			if typeof(x) == "Instance" then
 				pcall(function()
@@ -2763,7 +2758,7 @@ function Feature.ESP()
 			BL = makeCornerBracket(host),
 			BR = makeCornerBracket(host),
 		}
-		for _, c in corners do
+		for _, c in ipairs(corners) do
 			table.insert(maid, c)
 		end
 
@@ -2862,19 +2857,19 @@ function Feature.ESP()
 		if not d.corners then
 			return
 		end
-		for _, c in d.corners do
+		for _, c in ipairs(d.corners) do
 			c.Visible = false
 		end
 	end
 
 	local function getBounds(char, cam)
 		local points = {}
-		for _, part in char:GetChildren() do
+		for _, part in ipairs(char:GetChildren()) do
 			if part:IsA("BasePart") then
 				local cf, size = part.CFrame, part.Size
-				for _, ox in { -0.5, 0.5 } do
-					for _, oy in { -0.5, 0.5 } do
-						for _, oz in { -0.5, 0.5 } do
+				for _, ox in ipairs({ -0.5, 0.5 }) do
+					for _, oy in ipairs({ -0.5, 0.5 }) do
+						for _, oz in ipairs({ -0.5, 0.5 }) do
 							local world = (cf * CFrame.new(size.X * ox, size.Y * oy, size.Z * oz)).Position
 							local v, on = worldTo(cam, world)
 							if on then
@@ -2897,7 +2892,7 @@ function Feature.ESP()
 		end
 		local minX, minY = math.huge, math.huge
 		local maxX, maxY = -math.huge, -math.huge
-		for _, p in points do
+		for _, p in ipairs(points) do
 			minX, minY = math.min(minX, p.X), math.min(minY, p.Y)
 			maxX, maxY = math.max(maxX, p.X), math.max(maxY, p.Y)
 		end
@@ -2987,7 +2982,7 @@ function Feature.ESP()
 		end
 
 		if settings.enabled then
-			for _, plr in players do
+			for _, plr in ipairs(players) do
 				if plr ~= LocalPlayer then
 					local skip = settings.teamCheck and LocalPlayer.Team and plr.Team == LocalPlayer.Team
 					if not skip then
@@ -3095,19 +3090,19 @@ function Feature.ESP()
 									end
 
 									local pairsList = char:FindFirstChild("UpperTorso") and R15_BONES or R6_BONES
-									for _, bone in d.bones do
+									for _, bone in ipairs(d.bones) do
 										bone.Visible = false
 									end
 									if settings.skeleton then
 										local bi = 0
-										for _, pair in pairsList do
+										for _, pair in ipairs(pairsList) do
 											local aPart = char:FindFirstChild(pair[1])
 											local bPart = char:FindFirstChild(pair[2])
 											if aPart and bPart and aPart:IsA("BasePart") and bPart:IsA("BasePart") then
 												local a, aOn = worldTo(cam, aPart.Position)
 												local b, bOn = worldTo(cam, bPart.Position)
 												if aOn and bOn then
-													bi += 1
+													bi = bi + 1
 													local line = d.bones[bi]
 													if line then
 														placeLine(line, a, b, settings.skeletonColor, 2)
@@ -3135,7 +3130,7 @@ function Feature.ESP()
 			end
 		end
 
-		for userId in drawings do
+		for userId in pairs(drawings) do
 			if not settings.enabled or not alive[userId] then
 				clear(userId)
 			end
@@ -3144,15 +3139,15 @@ function Feature.ESP()
 
 	return {
 		Set = function(_, patch)
-			for k, v in patch do
+			for k, v in pairs(patch) do
 				settings[k] = v
 			end
 			if patch.enabled == false then
-				for userId in drawings do
+				for userId in pairs(drawings) do
 					clear(userId)
 				end
 			elseif patch.enabled == true then
-				for _, plr in Players:GetPlayers() do
+				for _, plr in ipairs(Players:GetPlayers()) do
 					if plr ~= LocalPlayer then
 						tryCreate(plr)
 					end
@@ -3167,7 +3162,7 @@ function Feature.ESP()
 				return
 			end
 			ensure()
-			for _, c in watchConns do
+			for _, c in ipairs(watchConns) do
 				c:Disconnect()
 			end
 			table.clear(watchConns)
@@ -3175,7 +3170,7 @@ function Feature.ESP()
 			table.insert(watchConns, Players.PlayerRemoving:Connect(function(plr)
 				clear(plr.UserId)
 			end))
-			for _, plr in Players:GetPlayers() do
+			for _, plr in ipairs(Players:GetPlayers()) do
 				watchPlayer(plr)
 			end
 			conn = RunService.RenderStepped:Connect(step)
@@ -3185,11 +3180,11 @@ function Feature.ESP()
 				conn:Disconnect()
 				conn = nil
 			end
-			for _, c in watchConns do
+			for _, c in ipairs(watchConns) do
 				c:Disconnect()
 			end
 			table.clear(watchConns)
-			for userId in drawings do
+			for userId in pairs(drawings) do
 				clear(userId)
 			end
 			if gui then
@@ -3277,14 +3272,14 @@ function Feature.Player()
 			return
 		end
 		if on then
-			for _, p in char:GetDescendants() do
+			for _, p in ipairs(char:GetDescendants()) do
 				if p:IsA("BasePart") then
 					noclipParts[p] = p.CanCollide
 					p.CanCollide = false
 				end
 			end
 		else
-			for p, was in noclipParts do
+			for p, was in ipairs(noclipParts) do
 				if p.Parent then
 					p.CanCollide = was
 				end
@@ -3307,22 +3302,22 @@ function Feature.Player()
 		local look = cam.CFrame.LookVector
 		local right = cam.CFrame.RightVector
 		if keys.W then
-			dir += look
+			dir = dir + look
 		end
 		if keys.S then
-			dir -= look
+			dir = dir - look
 		end
 		if keys.A then
-			dir -= right
+			dir = dir - right
 		end
 		if keys.D then
-			dir += right
+			dir = dir + right
 		end
 		if keys.Space then
-			dir += Vector3.yAxis
+			dir = dir + Vector3.yAxis
 		end
 		if keys.LeftControl then
-			dir -= Vector3.yAxis
+			dir = dir - Vector3.yAxis
 		end
 		if dir.Magnitude > 0 then
 			dir = dir.Unit * settings.flySpeed
@@ -3350,7 +3345,7 @@ function Feature.Player()
 			return
 		end
 		if method == "CFrame" then
-			r.CFrame += move * settings.speed * dt
+			r.CFrame = r.CFrame + move * settings.speed * dt
 		elseif method == "Velocity" then
 			local v = r.AssemblyLinearVelocity
 			local horiz = move * settings.speed
@@ -3360,7 +3355,7 @@ function Feature.Player()
 
 	return {
 		Set = function(_, patch)
-			for k, v in patch do
+			for k, v in pairs(patch) do
 				settings[k] = v
 			end
 			if patch.noclip ~= nil then
@@ -3426,7 +3421,7 @@ function Feature.Player()
 					flyStep(dt)
 				end
 				if settings.noclip and LocalPlayer.Character then
-					for _, p in LocalPlayer.Character:GetDescendants() do
+					for _, p in ipairs(LocalPlayer.Character:GetDescendants()) do
 						if p:IsA("BasePart") then
 							p.CanCollide = false
 						end
@@ -3483,7 +3478,7 @@ function Feature.Player()
 			end))
 		end,
 		Stop = function()
-			for _, c in conns do
+			for _, c in ipairs(conns) do
 				c:Disconnect()
 			end
 			table.clear(conns)
@@ -3605,9 +3600,9 @@ function Obsidian.Reload(url)
 		if pg then
 			table.insert(parents, pg)
 		end
-		for _, parent in parents do
+		for _, parent in ipairs(parents) do
 			if parent then
-				for _, child in parent:GetChildren() do
+				for _, child in ipairs(parent:GetChildren()) do
 					local n = child.Name
 					if n == "ObsidianUI" or n == "ObsidianESP" or string.sub(n, 1, 8) == "Obsidian" then
 						child:Destroy()
@@ -3645,7 +3640,11 @@ if genv.__ObsidianTeleportBooting then return end
 genv.__ObsidianTeleportBooting = true
 task.defer(function()
 	local ok, err = pcall(function()
-		loadstring(game:HttpGet(url))()
+		local src = game:HttpGet(url)
+		assert(type(src) == "string" and #src > 0, "HttpGet empty")
+		local fn, cerr = loadstring(src)
+		assert(fn, tostring(cerr))
+		fn()
 	end)
 	if not ok then
 		warn("[Obsidian] teleport reload failed:", err)
