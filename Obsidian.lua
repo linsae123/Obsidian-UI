@@ -1097,7 +1097,7 @@ function Obsidian:Create(config)
 				inst = inst,
 				text = key,
 				page = pageRef,
-			end)
+			})
 		end
 
 		local function addCard(height)
