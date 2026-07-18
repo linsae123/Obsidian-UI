@@ -30,7 +30,7 @@ local TeleportService = game:GetService("TeleportService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local Obsidian = {
-	Version = "1.2.3",
+	Version = "1.2.5",
 	_capturing = false,
 	SourceUrl = nil,
 }
@@ -1419,6 +1419,7 @@ function Obsidian:Create(config)
 			img.Size = UDim2.fromScale(1, 1)
 			img.ScaleType = Enum.ScaleType.Crop
 			img.ImageTransparency = 0.05
+			img.ZIndex = 1
 			img.Parent = card
 
 			local function httpGet(url)
@@ -1484,39 +1485,107 @@ function Obsidian:Create(config)
 				return nil
 			end
 
-			local function setBanner(url)
-				if img.Parent and type(url) == "string" and url ~= "" then
-					img.Image = url
+			local function setBanner(content)
+				if img.Parent and type(content) == "string" and content ~= "" then
+					img.Image = content
 				end
 			end
 
+			-- CDN https often fails on ImageLabel in executors → download + getcustomasset
+			local function applyDownloadedImage(imageUrl, placeId)
+				if type(imageUrl) ~= "string" or imageUrl == "" then
+					return false
+				end
+				setBanner(imageUrl)
+
+				local bytes = httpGet(imageUrl)
+				if not bytes or #bytes < 64 then
+					return false
+				end
+
+				local folder = "Obsidian"
+				pcall(function()
+					if typeof(isfolder) == "function" and typeof(makefolder) == "function" then
+						if not isfolder(folder) then
+							makefolder(folder)
+						end
+					end
+				end)
+
+				local path = folder .. "/banner_" .. tostring(placeId) .. ".png"
+				local wrote = false
+				pcall(function()
+					if typeof(writefile) == "function" then
+						writefile(path, bytes)
+						wrote = true
+					end
+				end)
+				if not wrote then
+					path = "ObsidianBanner_" .. tostring(placeId) .. ".png"
+					pcall(function()
+						if typeof(writefile) == "function" then
+							writefile(path, bytes)
+							wrote = true
+						end
+					end)
+				end
+				if not wrote then
+					return false
+				end
+
+				local asset = nil
+				pcall(function()
+					if typeof(getcustomasset) == "function" then
+						asset = getcustomasset(path)
+					end
+				end)
+				pcall(function()
+					if not asset and typeof(getsynasset) == "function" then
+						asset = getsynasset(path)
+					end
+				end)
+				pcall(function()
+					if not asset and syn and typeof(syn.getcustomasset) == "function" then
+						asset = syn.getcustomasset(path)
+					end
+				end)
+
+				if type(asset) == "string" and asset ~= "" then
+					setBanner(asset)
+					return true
+				end
+				return false
+			end
+
 			if cfg.Image then
-				setBanner(cfg.Image)
+				if string.find(cfg.Image, "https://", 1, true) or string.find(cfg.Image, "http://", 1, true) then
+					task.spawn(function()
+						applyDownloadedImage(cfg.Image, game.PlaceId)
+					end)
+				else
+					setBanner(cfg.Image)
+				end
 			else
 				local placeId = tonumber(cfg.PlaceId) or game.PlaceId
 				local universeId = tonumber(cfg.UniverseId) or game.GameId
-				-- quick placeholder while API resolves
-				setBanner(
-					"rbxthumb://type=GameThumbnail&id=" .. tostring(placeId) .. "&w=768&h=432"
-				)
+				setBanner("rbxthumb://type=GameThumbnail&id=" .. tostring(placeId) .. "&w=768&h=432")
+
 				task.spawn(function()
 					local endpoints = {
-						-- wide place/game media (best for banner)
 						string.format(
 							"https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=%s&countPerUniverse=1&size=768x432&format=Png&isCircular=false",
 							tostring(universeId)
 						),
-						-- place icon via PlaceId
 						string.format(
 							"https://thumbnails.roblox.com/v1/places/gameicons?placeIds=%s&returnPolicy=PlaceHolder&size=512x512&format=Png",
 							tostring(placeId)
 						),
-						-- universe icon fallback
 						string.format(
 							"https://thumbnails.roblox.com/v1/games/icons?universeIds=%s&returnPolicy=PlaceHolder&size=512x512&format=Png",
 							tostring(universeId)
 						),
 					}
+
 					for _, endpoint in endpoints do
 						local raw = httpGet(endpoint)
 						if raw then
@@ -1525,6 +1594,9 @@ function Obsidian:Create(config)
 							end)
 							if ok then
 								local imageUrl = pickImageUrl(decoded)
+								if imageUrl and applyDownloadedImage(imageUrl, placeId) then
+									return
+								end
 								if imageUrl then
 									setBanner(imageUrl)
 									return
@@ -1532,7 +1604,9 @@ function Obsidian:Create(config)
 							end
 						end
 					end
-					-- final rbxthumb fallbacks
+
+					setBanner("rbxthumb://type=PlaceIcon&id=" .. tostring(placeId) .. "&w=512&h=512")
+					task.wait(0.15)
 					setBanner("rbxthumb://type=GameIcon&id=" .. tostring(universeId) .. "&w=512&h=512")
 				end)
 			end
@@ -1591,7 +1665,7 @@ function Obsidian:Create(config)
 			return card
 		end
 
-		function api:AddChangelog(cfg)
+function api:AddChangelog(cfg)
 			cfg = cfg or {}
 			local items = cfg.Items or cfg.Entries or {}
 			local wrap = Instance.new("Frame")
