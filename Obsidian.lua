@@ -125,9 +125,22 @@ local MOUSE = {
 	[Enum.UserInputType.MouseButton1] = "Lmb",
 	[Enum.UserInputType.MouseButton2] = "Rmb",
 	[Enum.UserInputType.MouseButton3] = "Mmb",
-	[Enum.UserInputType.MouseButton4] = "X1",
-	[Enum.UserInputType.MouseButton5] = "X2",
 }
+-- MouseButton4/5 are not in standard Roblox Enum (some executors add them)
+do
+	local ok4, mb4 = pcall(function()
+		return (Enum.UserInputType :: any).MouseButton4
+	end)
+	local ok5, mb5 = pcall(function()
+		return (Enum.UserInputType :: any).MouseButton5
+	end)
+	if ok4 and mb4 then
+		MOUSE[mb4] = "X1"
+	end
+	if ok5 and mb5 then
+		MOUSE[mb5] = "X2"
+	end
+end
 
 function Obsidian.FormatBind(value)
 	if typeof(value) == "EnumItem" then
