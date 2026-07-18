@@ -140,6 +140,7 @@ end
 
 local function label(parent, props)
 	local t = Instance.new("TextLabel")
+	t.Name = props.Name or "Label"
 	t.BackgroundTransparency = 1
 	t.BorderSizePixel = 0
 	t.Font = props.Font or Enum.Font.GothamMedium
@@ -459,9 +460,22 @@ function Obsidian:Create(config)
 		Text = title,
 		Font = Enum.Font.GothamBold,
 		TextSize = 18,
-		Size = UDim2.new(1, -24, 1, 0),
-		Position = UDim2.fromOffset(22, 0),
+		Size = UDim2.new(1, -24, 0, 22),
+		Position = UDim2.fromOffset(22, 10),
+		Name = "TitleLabel",
 	})
+
+	local subtitleText = tostring(config.Subtitle or config.SubTitle or "")
+	local subtitleLabel = label(dragBtn, {
+		Text = subtitleText,
+		Font = Enum.Font.Gotham,
+		TextSize = 11,
+		TextColor3 = COLORS.muted,
+		Size = UDim2.new(1, -24, 0, 16),
+		Position = UDim2.fromOffset(22, 30),
+		Name = "SubtitleLabel",
+	})
+	subtitleLabel.Visible = subtitleText ~= ""
 
 	local dragging, dragStart, startPos
 	dragBtn.InputBegan:Connect(function(input)
@@ -1090,6 +1104,30 @@ function Obsidian:Create(config)
 	function WindowApi:SetToggleKey(key)
 		state.toggleKey = key
 		refreshHotkeys()
+	end
+
+	function WindowApi:SetTitle(text)
+		local titleLabel = dragBtn:FindFirstChild("TitleLabel")
+		if titleLabel and titleLabel:IsA("TextLabel") then
+			titleLabel.Text = tostring(text or "")
+		end
+	end
+
+	function WindowApi:SetSubtitle(text)
+		text = tostring(text or "")
+		local sub = dragBtn:FindFirstChild("SubtitleLabel")
+		if sub and sub:IsA("TextLabel") then
+			sub.Text = text
+			sub.Visible = text ~= ""
+		end
+	end
+
+	function WindowApi:GetSubtitle()
+		local sub = dragBtn:FindFirstChild("SubtitleLabel")
+		if sub and sub:IsA("TextLabel") then
+			return sub.Text
+		end
+		return ""
 	end
 
 	function WindowApi:AddSection(name)
