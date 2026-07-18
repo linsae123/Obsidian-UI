@@ -30,7 +30,7 @@ local TeleportService = game:GetService("TeleportService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local Obsidian = {
-	Version = "1.1.1",
+	Version = "1.2.0",
 	_capturing = false,
 	SourceUrl = nil,
 }
@@ -54,6 +54,24 @@ local LUCIDE = {
 	keyboard = { id = 16898613509, rect = Vector2.new(453, 820), size = Vector2.new(48, 48) },
 	bell = { id = 16898612819, rect = Vector2.new(820, 257), size = Vector2.new(48, 48) },
 	sparkles = { id = 16898613777, rect = Vector2.new(918, 49), size = Vector2.new(48, 48) },
+	["layout-dashboard"] = { id = 16898613509, rect = Vector2.new(967, 355), size = Vector2.new(48, 48) },
+	["layout-grid"] = { id = 16898613509, rect = Vector2.new(918, 404), size = Vector2.new(48, 48) },
+	home = { id = 16898613509, rect = Vector2.new(820, 147), size = Vector2.new(48, 48) },
+	eye = { id = 16898613353, rect = Vector2.new(771, 563), size = Vector2.new(48, 48) },
+	user = { id = 16898613869, rect = Vector2.new(661, 869), size = Vector2.new(48, 48) },
+	settings = { id = 16898613777, rect = Vector2.new(771, 257), size = Vector2.new(48, 48) },
+	plus = { id = 16898613699, rect = Vector2.new(257, 918), size = Vector2.new(48, 48) },
+	pencil = { id = 16898613699, rect = Vector2.new(820, 257), size = Vector2.new(48, 48) },
+	zap = { id = 16898613869, rect = Vector2.new(918, 906), size = Vector2.new(48, 48) },
+	activity = { id = 16898612629, rect = Vector2.new(514, 771), size = Vector2.new(48, 48) },
+	box = { id = 16898612819, rect = Vector2.new(771, 196), size = Vector2.new(48, 48) },
+	gauge = { id = 16898613353, rect = Vector2.new(771, 955), size = Vector2.new(48, 48) },
+	["sliders-horizontal"] = { id = 16898613777, rect = Vector2.new(820, 355), size = Vector2.new(48, 48) },
+	["refresh-cw"] = { id = 16898613699, rect = Vector2.new(404, 869), size = Vector2.new(48, 48) },
+	["gamepad-2"] = { id = 16898613353, rect = Vector2.new(710, 967), size = Vector2.new(48, 48) },
+	rocket = { id = 16898613699, rect = Vector2.new(918, 147), size = Vector2.new(48, 48) },
+	monitor = { id = 16898613613, rect = Vector2.new(404, 820), size = Vector2.new(48, 48) },
+	layers = { id = 16898613509, rect = Vector2.new(98, 967), size = Vector2.new(48, 48) },
 }
 
 local function lucideIcon(parent, name, size, color, position, anchor)
@@ -719,10 +737,21 @@ function Obsidian:Create(config)
 		pageTitle.Text = page.name
 		pageTitle.TextTransparency = 1
 		tween(pageTitle, { TextTransparency = 0 }, 0.22)
+
+		if page.fullWidth then
+			leftCol.Size = UDim2.new(1, 0, 1, 0)
+			rightCol.Visible = false
+		else
+			leftCol.Size = UDim2.new(0.5, -8, 1, 0)
+			rightCol.Visible = true
+			rightCol.Position = UDim2.new(0.5, 8, 0, 0)
+			rightCol.Size = UDim2.new(0.5, -8, 1, 0)
+		end
+
 		for _, p in state.pages do
 			local show = p == page
 			p.left.Visible = show
-			p.right.Visible = show
+			p.right.Visible = show and not p.fullWidth
 			if p.navBtn then
 				tween(p.navBtn, {
 					BackgroundTransparency = show and 0 or 1,
@@ -731,9 +760,13 @@ function Obsidian:Create(config)
 				tween(p.navLabel, {
 					TextColor3 = show and COLORS.text or COLORS.muted,
 				}, 0.16)
+				if p.navIcon then
+					tween(p.navIcon, {
+						ImageColor3 = show and COLORS.text or COLORS.muted,
+					}, 0.16)
+				end
 			end
 		end
-		-- subtle content slide
 		pageHost.Position = UDim2.fromOffset(16, 56)
 		tween(pageHost, { Position = UDim2.fromOffset(16, 48) }, 0.22)
 	end
@@ -1318,7 +1351,7 @@ function Obsidian:Create(config)
 				Font = Enum.Font.GothamSemibold,
 				TextSize = 12,
 			})
-			label(card, {
+			local body = label(card, {
 				Text = cfg.Content or cfg.Description or "",
 				TextColor3 = COLORS.muted,
 				TextSize = 10,
@@ -1327,6 +1360,150 @@ function Obsidian:Create(config)
 				Position = UDim2.fromOffset(0, 22),
 				TextYAlignment = Enum.TextYAlignment.Top,
 			})
+			body.TextWrapped = true
+		end
+
+		function api:AddWelcomeBanner(cfg)
+			cfg = cfg or {}
+			local card = Instance.new("Frame")
+			card.Size = UDim2.new(1, 0, 0, cfg.Height or 168)
+			card.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
+			card.BorderSizePixel = 0
+			card.ClipsDescendants = true
+			card.LayoutOrder = #parentFrame:GetChildren()
+			card.Parent = parentFrame
+			corner(card, 16)
+			stroke(card, COLORS.line, 0.45)
+
+			local img = Instance.new("ImageLabel")
+			img.BackgroundTransparency = 1
+			img.Size = UDim2.fromScale(1, 1)
+			img.ScaleType = Enum.ScaleType.Crop
+			img.ImageTransparency = 0.15
+			img.Image = cfg.Image
+				or ("rbxthumb://type=GameIcon&id=" .. tostring(game.PlaceId) .. "&w=512&h=512")
+			img.Parent = card
+
+			local shade = Instance.new("Frame")
+			shade.Size = UDim2.fromScale(1, 1)
+			shade.BackgroundColor3 = Color3.fromRGB(8, 6, 14)
+			shade.BackgroundTransparency = 0.35
+			shade.BorderSizePixel = 0
+			shade.Parent = card
+			local g = Instance.new("UIGradient")
+			g.Rotation = 90
+			g.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 16, 28)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 6, 12)),
+			})
+			g.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.55),
+				NumberSequenceKeypoint.new(0.45, 0.25),
+				NumberSequenceKeypoint.new(1, 0.05),
+			})
+			g.Parent = shade
+
+			local welcome = cfg.Title
+				or ("Welcome, " .. (LocalPlayer.DisplayName or LocalPlayer.Name or "Player"))
+			local playing = cfg.Subtitle
+			if not playing then
+				local placeName = tostring(game.PlaceId)
+				pcall(function()
+					local data = MarketplaceService:GetProductInfo(game.PlaceId)
+					if data and data.Name then
+						placeName = data.Name
+					end
+				end)
+				playing = "You are currently playing, " .. placeName
+			end
+
+			label(card, {
+				Text = welcome,
+				Font = Enum.Font.GothamBold,
+				TextSize = 22,
+				Size = UDim2.new(1, -28, 0, 28),
+				Position = UDim2.new(0, 18, 1, -58),
+				ZIndex = 5,
+			})
+			label(card, {
+				Text = playing,
+				Font = Enum.Font.Gotham,
+				TextSize = 13,
+				TextColor3 = Color3.fromRGB(200, 194, 214),
+				Size = UDim2.new(1, -28, 0, 20),
+				Position = UDim2.new(0, 18, 1, -28),
+				ZIndex = 5,
+			})
+			return card
+		end
+
+		function api:AddChangelog(cfg)
+			cfg = cfg or {}
+			local items = cfg.Items or cfg.Entries or {}
+			local wrap = Instance.new("Frame")
+			wrap.Size = UDim2.new(1, 0, 0, 0)
+			wrap.AutomaticSize = Enum.AutomaticSize.Y
+			wrap.BackgroundTransparency = 1
+			wrap.LayoutOrder = #parentFrame:GetChildren()
+			wrap.Parent = parentFrame
+			list(wrap, 8)
+
+			if cfg.Title or cfg.Version then
+				local head = Instance.new("Frame")
+				head.Size = UDim2.new(1, 0, 0, 22)
+				head.BackgroundTransparency = 1
+				head.LayoutOrder = 0
+				head.Parent = wrap
+				label(head, {
+					Text = cfg.Title or cfg.Version or "Updates",
+					Font = Enum.Font.GothamBold,
+					TextSize = 13,
+					TextColor3 = COLORS.muted,
+				})
+			end
+
+			for i, item in items do
+				local kind = string.lower(tostring(item.Kind or item.Type or "add"))
+				local accent = item.Color
+					or (kind == "edit" or kind == "change") and Color3.fromRGB(230, 190, 70)
+					or Color3.fromRGB(88, 214, 112)
+				local iconName = item.Icon or ((kind == "edit" or kind == "change") and "pencil" or "plus")
+
+				local row = Instance.new("Frame")
+				row.Size = UDim2.new(1, 0, 0, 40)
+				row.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
+				row.BorderSizePixel = 0
+				row.LayoutOrder = i
+				row.Parent = wrap
+				corner(row, 10)
+				stroke(row, COLORS.line, 0.55)
+
+				local bar = Instance.new("Frame")
+				bar.Size = UDim2.new(0, 3, 1, -12)
+				bar.Position = UDim2.fromOffset(8, 6)
+				bar.BackgroundColor3 = accent
+				bar.BorderSizePixel = 0
+				bar.Parent = row
+				corner(bar, 2)
+
+				lucideIcon(
+					row,
+					iconName,
+					14,
+					accent,
+					UDim2.new(0, 22, 0.5, 0),
+					Vector2.new(0, 0.5)
+				)
+				label(row, {
+					Text = item.Text or item.Title or "",
+					Font = Enum.Font.GothamMedium,
+					TextSize = 12,
+					Size = UDim2.new(1, -52, 1, 0),
+					Position = UDim2.fromOffset(44, 0),
+					TextTruncate = Enum.TextTruncate.AtEnd,
+				})
+			end
+			return wrap
 		end
 
 		function api:AddGroup(cfg)
@@ -1787,6 +1964,7 @@ function Obsidian:Create(config)
 		local page = {
 			name = cfg.Name or "Page",
 			icon = cfg.Icon,
+			fullWidth = cfg.FullWidth == true,
 			left = Instance.new("Frame"),
 			right = Instance.new("Frame"),
 		}
@@ -1812,16 +1990,29 @@ function Obsidian:Create(config)
 		})
 		navBtn.LayoutOrder = #navFrame:GetChildren()
 		corner(navBtn, 12)
+
+		local iconName = cfg.Icon or "sparkles"
+		local navIcon = lucideIcon(
+			navBtn,
+			iconName,
+			14,
+			COLORS.muted,
+			UDim2.new(0, 10, 0.5, 0),
+			Vector2.new(0, 0.5)
+		)
+		navIcon.ZIndex = 3
+
 		local navLabel = label(navBtn, {
 			Text = page.name,
 			Font = Enum.Font.GothamMedium,
 			TextSize = 11,
-			Size = UDim2.new(1, -16, 1, 0),
-			Position = UDim2.fromOffset(12, 0),
+			Size = UDim2.new(1, -36, 1, 0),
+			Position = UDim2.fromOffset(30, 0),
 			TextColor3 = COLORS.muted,
 		})
 		page.navBtn = navBtn
 		page.navLabel = navLabel
+		page.navIcon = navIcon
 		navBtn.MouseButton1Click:Connect(function()
 			selectPage(page)
 		end)
@@ -1847,11 +2038,13 @@ function Obsidian:Create(config)
 			return self:Left()
 		end
 
-		-- Direct adds go left by default with auto balance
 		local leftApi = createControlHost(page.left)
 		local rightApi = createControlHost(page.right)
 		local leftCount, rightCount = 0, 0
 		local function pick()
+			if page.fullWidth then
+				return leftApi
+			end
 			if leftCount <= rightCount then
 				leftCount += 1
 				return leftApi
@@ -1860,17 +2053,28 @@ function Obsidian:Create(config)
 			return rightApi
 		end
 
-		for _, name in { "AddToggle", "AddSlider", "AddDropdown", "AddKeybind", "AddColorPicker", "AddButton", "AddParagraph", "AddGroup" } do
+		for _, name in {
+			"AddToggle",
+			"AddSlider",
+			"AddDropdown",
+			"AddKeybind",
+			"AddColorPicker",
+			"AddButton",
+			"AddParagraph",
+			"AddGroup",
+			"AddWelcomeBanner",
+			"AddChangelog",
+		} do
 			pageApi[name] = function(_, cfg2)
 				cfg2 = cfg2 or {}
 				local side = cfg2.Side and string.lower(tostring(cfg2.Side))
 				local host
-				if side == "right" then
-					rightCount += 1
-					host = rightApi
-				elseif side == "left" then
+				if page.fullWidth or side == "left" then
 					leftCount += 1
 					host = leftApi
+				elseif side == "right" then
+					rightCount += 1
+					host = rightApi
 				else
 					host = pick()
 				end
@@ -2820,7 +3024,6 @@ function Obsidian.Reload(url)
 		warn("[Obsidian] Reload: HttpGet failed", src)
 		return false
 	end
-	-- wipe previous UI roots if present
 	pcall(function()
 		local hui = gethui and gethui()
 		local parent = hui or CoreGui
@@ -2840,28 +3043,66 @@ function Obsidian.Reload(url)
 	return true
 end
 
-function Obsidian.StartAutoReload(url, seconds)
+local function queueTeleportScript(url)
+	local code = string.format(
+		'loadstring(game:HttpGet(%q))()',
+		url
+	)
+	local queued = false
+	for _, fn in {
+		queue_on_teleport,
+		queueonteleport,
+		syn and syn.queue_on_teleport,
+		fluxus and fluxus.queue_on_teleport,
+	} do
+		if typeof(fn) == "function" then
+			local ok = pcall(fn, code)
+			if ok then
+				queued = true
+				break
+			end
+		end
+	end
+	return queued
+end
+
+-- Auto-reload after server hop / teleport (not interval-based)
+function Obsidian.EnableTeleportReload(url)
 	url = url or Obsidian.SourceUrl
-	seconds = tonumber(seconds) or 60
-	if Obsidian._autoReload then
-		task.cancel(Obsidian._autoReload)
-		Obsidian._autoReload = nil
+	if not url or url == "" then
+		warn("[Obsidian] EnableTeleportReload: no SourceUrl")
+		return false
 	end
 	Obsidian.SourceUrl = url
-	Obsidian._autoReload = task.spawn(function()
-		while true do
-			task.wait(seconds)
-			Obsidian.Reload(url)
-		end
-	end)
-	return true
+	Obsidian._teleportReload = true
+	local ok = queueTeleportScript(url)
+	if not Obsidian._teleportConn then
+		pcall(function()
+			Obsidian._teleportConn = TeleportService.LocalPlayerTeleporting:Connect(function()
+				if Obsidian._teleportReload and Obsidian.SourceUrl then
+					queueTeleportScript(Obsidian.SourceUrl)
+				end
+			end)
+		end)
+	end
+	return ok
+end
+
+function Obsidian.DisableTeleportReload()
+	Obsidian._teleportReload = false
+	if Obsidian._teleportConn then
+		Obsidian._teleportConn:Disconnect()
+		Obsidian._teleportConn = nil
+	end
+end
+
+-- Backwards-compatible aliases
+function Obsidian.StartAutoReload(url)
+	return Obsidian.EnableTeleportReload(url)
 end
 
 function Obsidian.StopAutoReload()
-	if Obsidian._autoReload then
-		task.cancel(Obsidian._autoReload)
-		Obsidian._autoReload = nil
-	end
+	Obsidian.DisableTeleportReload()
 end
 
 return Obsidian
