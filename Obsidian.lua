@@ -30,8 +30,9 @@ local TeleportService = game:GetService("TeleportService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local Obsidian = {
-	Version = "1.1.0",
+	Version = "1.1.1",
 	_capturing = false,
+	SourceUrl = nil,
 }
 
 local function uid(prefix)
@@ -219,7 +220,7 @@ local function makeToggle(parent, enabled, onChanged, position)
 	track.Text = ""
 	track.Size = UDim2.fromOffset(38, 20)
 	track.AnchorPoint = Vector2.new(1, 0.5)
-	track.Position = position or UDim2.new(1, 0, 0.5, 0)
+	track.Position = position or UDim2.new(1, 0, 0.5, -3)
 	track.BackgroundColor3 = enabled and COLORS.purple or Color3.fromRGB(43, 40, 50)
 	track.BorderSizePixel = 0
 	track.ZIndex = 5
@@ -358,6 +359,33 @@ function Obsidian:Create(config)
 	holder.IgnoreGuiInset = true
 	holder.DisplayOrder = config.DisplayOrder or 200
 	protect(holder)
+
+	local dropLayer = Instance.new("Frame")
+	dropLayer.Name = "DropLayer"
+	dropLayer.Size = UDim2.fromScale(1, 1)
+	dropLayer.BackgroundTransparency = 1
+	dropLayer.BorderSizePixel = 0
+	dropLayer.ZIndex = 500
+	dropLayer.Parent = holder
+
+	local activeDropdown = nil
+	local function closeDropdown()
+		if activeDropdown then
+			activeDropdown.Visible = false
+			activeDropdown = nil
+		end
+	end
+	local function openDropdown(menu, anchor)
+		closeDropdown()
+		local absPos = anchor.AbsolutePosition
+		local absSize = anchor.AbsoluteSize
+		menu.Parent = dropLayer
+		menu.Size = UDim2.fromOffset(math.max(absSize.X, 120), menu.Size.Y.Offset)
+		menu.Position = UDim2.fromOffset(absPos.X, absPos.Y + absSize.Y + 4)
+		menu.ZIndex = 510
+		menu.Visible = true
+		activeDropdown = menu
+	end
 
 	local window = Instance.new("Frame")
 	window.Name = "Window"
@@ -1082,12 +1110,11 @@ function Obsidian:Create(config)
 
 			local menu = Instance.new("Frame")
 			menu.Visible = false
-			menu.Position = UDim2.fromOffset(0, 60)
-			menu.Size = UDim2.new(1, 0, 0, #options * 30 + 8)
+			menu.Size = UDim2.fromOffset(180, #options * 30 + 8)
 			menu.BackgroundColor3 = Color3.fromRGB(18, 17, 24)
 			menu.BorderSizePixel = 0
-			menu.ZIndex = 40
-			menu.Parent = card
+			menu.ZIndex = 510
+			menu.Parent = dropLayer
 			corner(menu, 10)
 			stroke(menu, COLORS.line, 0.25)
 			list(menu, 2)
@@ -1096,7 +1123,7 @@ function Obsidian:Create(config)
 			local function set(v)
 				value = v
 				main.Text = "  " .. tostring(value)
-				menu.Visible = false
+				closeDropdown()
 				open = false
 				if cfg.Callback then
 					task.spawn(cfg.Callback, value)
@@ -1110,7 +1137,7 @@ function Obsidian:Create(config)
 					BackgroundColor3 = opt == value and Color3.fromRGB(47, 35, 72) or Color3.fromRGB(23, 22, 30),
 					BackgroundTransparency = opt == value and 0 or 1,
 					TextColor3 = opt == value and Color3.fromRGB(178, 143, 252) or Color3.fromRGB(190, 186, 199),
-					ZIndex = 41,
+					ZIndex = 511,
 				})
 				optBtn.LayoutOrder = i
 				corner(optBtn, 8)
@@ -1121,7 +1148,11 @@ function Obsidian:Create(config)
 
 			main.MouseButton1Click:Connect(function()
 				open = not open
-				menu.Visible = open
+				if open then
+					openDropdown(menu, main)
+				else
+					closeDropdown()
+				end
 			end)
 
 			return { Set = set, Get = function() return value end }
@@ -1345,7 +1376,7 @@ function Obsidian:Create(config)
 					if cfg.Callback then
 						cfg.Callback(v)
 					end
-				end, UDim2.new(1, -14, 0.5, 0))
+				end, UDim2.new(1, -14, 0.5, -3))
 			end
 
 			local body = Instance.new("Frame")
@@ -1374,7 +1405,7 @@ function Obsidian:Create(config)
 				card.BorderSizePixel = 0
 				card.LayoutOrder = #body:GetChildren()
 				card.Parent = body
-				pad(card, 10, 10, 14, 14)
+				pad(card, 6, 8, 14, 14)
 				addDivider(card)
 				return card
 			end
@@ -1383,7 +1414,7 @@ function Obsidian:Create(config)
 
 			function groupApi:AddToggle(c)
 				c = c or {}
-				local card = row(c.Description and 56 or 46)
+				local card = row(c.Description and 52 or 40)
 				label(card, {
 					Text = c.Name or "Toggle",
 					Font = Enum.Font.GothamSemibold,
@@ -1565,17 +1596,17 @@ function Obsidian:Create(config)
 				c = c or {}
 				local options = c.Options or { "Option 1" }
 				local value = c.Default or options[1]
-				local card = row(70)
+				local card = row(64)
 				label(card, {
 					Text = c.Name or "Dropdown",
 					Font = Enum.Font.GothamSemibold,
 					TextSize = 12,
-					Size = UDim2.new(1, 0, 0, 18),
+					Size = UDim2.new(1, 0, 0, 16),
 				})
 				local open = false
 				local main = button(card, {
-					Size = UDim2.new(1, 0, 0, 30),
-					Position = UDim2.fromOffset(0, 22),
+					Size = UDim2.new(1, 0, 0, 28),
+					Position = UDim2.fromOffset(0, 20),
 					Text = "  " .. tostring(value),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					BackgroundColor3 = Color3.fromRGB(27, 25, 34),
@@ -1587,12 +1618,11 @@ function Obsidian:Create(config)
 
 				local menu = Instance.new("Frame")
 				menu.Visible = false
-				menu.Position = UDim2.fromOffset(0, 56)
-				menu.Size = UDim2.new(1, 0, 0, #options * 28 + 8)
+				menu.Size = UDim2.fromOffset(180, #options * 28 + 8)
 				menu.BackgroundColor3 = Color3.fromRGB(18, 17, 24)
 				menu.BorderSizePixel = 0
-				menu.ZIndex = 40
-				menu.Parent = card
+				menu.ZIndex = 510
+				menu.Parent = dropLayer
 				corner(menu, 9)
 				stroke(menu, COLORS.line, 0.25)
 				list(menu, 2)
@@ -1601,7 +1631,7 @@ function Obsidian:Create(config)
 				local function set(v)
 					value = v
 					main.Text = "  " .. tostring(value)
-					menu.Visible = false
+					closeDropdown()
 					open = false
 					if c.Callback then
 						task.spawn(c.Callback, value)
@@ -1615,7 +1645,7 @@ function Obsidian:Create(config)
 						BackgroundColor3 = opt == value and Color3.fromRGB(47, 35, 72) or Color3.fromRGB(23, 22, 30),
 						BackgroundTransparency = opt == value and 0 or 1,
 						TextColor3 = opt == value and Color3.fromRGB(178, 143, 252) or Color3.fromRGB(190, 186, 199),
-						ZIndex = 41,
+						ZIndex = 511,
 					})
 					optBtn.LayoutOrder = i
 					corner(optBtn, 7)
@@ -1626,7 +1656,11 @@ function Obsidian:Create(config)
 
 				main.MouseButton1Click:Connect(function()
 					open = not open
-					menu.Visible = open
+					if open then
+						openDropdown(menu, main)
+					else
+						closeDropdown()
+					end
 				end)
 				return { Set = set, Get = function() return value end }
 			end
@@ -1908,30 +1942,75 @@ local R6_BONES = {
 	{ "Torso", "Right Leg" },
 }
 
-local function makeLine(parent)
+local function makeLine(parent, z)
 	local f = Instance.new("Frame")
-	f.AnchorPoint = Vector2.new(0.5, 0)
+	f.AnchorPoint = Vector2.new(0.5, 0.5)
 	f.BorderSizePixel = 0
-	f.BackgroundTransparency = 0.15
+	f.BackgroundTransparency = 0
 	f.Visible = false
-	f.ZIndex = 40
+	f.ZIndex = z or 120
 	f.Parent = parent
 	Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
 	return f
 end
 
 local function placeLine(line, a, b, color, thickness)
+	if typeof(line) == "table" and line.kind == "drawing" then
+		local obj = line.obj
+		obj.From = a
+		obj.To = b
+		obj.Color = color
+		obj.Thickness = thickness or 1.5
+		obj.Transparency = 0.15
+		obj.Visible = true
+		return
+	end
 	local delta = b - a
 	local len = delta.Magnitude
 	if len < 1 then
 		line.Visible = false
 		return
 	end
+	local mid = a:Lerp(b, 0.5)
 	line.Visible = true
 	line.BackgroundColor3 = color
-	line.Size = UDim2.fromOffset(thickness or 2, len)
-	line.Position = UDim2.fromOffset(a.X, a.Y)
+	line.BackgroundTransparency = 0
+	line.Size = UDim2.fromOffset(math.max(thickness or 2, 2), len)
+	line.Position = UDim2.fromOffset(mid.X, mid.Y)
 	line.Rotation = math.deg(math.atan2(delta.Y, delta.X)) - 90
+end
+
+local function hideLine(line)
+	if typeof(line) == "table" and line.kind == "drawing" then
+		line.obj.Visible = false
+		return
+	end
+	line.Visible = false
+end
+
+local function destroyLine(line)
+	if typeof(line) == "table" and line.kind == "drawing" then
+		pcall(function()
+			line.obj:Remove()
+		end)
+		return
+	end
+	if typeof(line) == "Instance" then
+		line:Destroy()
+	end
+end
+
+local function makeTracer(parent)
+	if Drawing and typeof(Drawing.new) == "function" then
+		local ok, obj = pcall(Drawing.new, "Line")
+		if ok and obj then
+			obj.Visible = false
+			obj.Thickness = 1.5
+			obj.Transparency = 0.15
+			return { kind = "drawing", obj = obj }
+		end
+	end
+	return makeLine(parent, 130)
 end
 
 local function worldTo(cam, pos)
@@ -1954,7 +2033,8 @@ function Feature.ESP()
 		headGlow = true,
 		chams = false,
 		teamCheck = false,
-		maxDistance = 1000,
+		streamLoad = true,
+		maxDistance = 2500,
 		boxColor = Color3.fromRGB(64, 168, 255),
 		healthColor = Color3.fromRGB(255, 90, 120),
 		nameColor = Color3.fromRGB(255, 255, 255),
@@ -1963,9 +2043,10 @@ function Feature.ESP()
 	}
 
 	local gui
-	local drawings = {}
+	local drawings = {} -- keyed by UserId
 	local conn
 	local charConns = {}
+	local lastStream = 0
 
 	local function rootOf(char)
 		return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"))
@@ -1979,13 +2060,14 @@ function Feature.ESP()
 		gui.Name = "ObsidianESP"
 		gui.ResetOnSpawn = false
 		gui.IgnoreGuiInset = true
-		gui.DisplayOrder = 50
+		gui.DisplayOrder = 120
+		gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 		protect(gui)
 		return gui
 	end
 
-	local function clear(char)
-		local d = drawings[char]
+	local function clear(userId)
+		local d = drawings[userId]
 		if not d then
 			return
 		end
@@ -1994,26 +2076,29 @@ function Feature.ESP()
 				if typeof(c) == "RBXScriptConnection" then
 					c:Disconnect()
 				elseif typeof(c) == "Instance" then
-					c:Destroy()
+					pcall(function()
+						c:Destroy()
+					end)
 				end
 			end
 		end
-		for _, x in d do
+		if d.tracer then
+			destroyLine(d.tracer)
+		end
+		if d.bones then
+			for _, bone in d.bones do
+				destroyLine(bone)
+			end
+		end
+		for _, key in { "chams", "bb", "box", "glow" } do
+			local x = d[key]
 			if typeof(x) == "Instance" then
 				pcall(function()
 					x:Destroy()
 				end)
-			elseif typeof(x) == "table" then
-				for _, y in x do
-					if typeof(y) == "Instance" then
-						pcall(function()
-							y:Destroy()
-						end)
-					end
-				end
 			end
 		end
-		drawings[char] = nil
+		drawings[userId] = nil
 	end
 
 	local function create(char, player)
@@ -2024,6 +2109,7 @@ function Feature.ESP()
 		end
 		local host = ensure()
 		local maid = {}
+		local userId = player.UserId
 
 		local chams = Instance.new("Highlight")
 		chams.FillTransparency = 0.7
@@ -2036,54 +2122,46 @@ function Feature.ESP()
 
 		local bb = Instance.new("BillboardGui")
 		bb.AlwaysOnTop = true
-		bb.Size = UDim2.fromOffset(160, 64)
+		bb.Size = UDim2.fromOffset(168, 0)
+		bb.AutomaticSize = Enum.AutomaticSize.Y
 		bb.StudsOffset = Vector3.new(0, 3.6, 0)
 		bb.Adornee = head or root
 		bb.Parent = host
 		table.insert(maid, bb)
 
-		local nameL = Instance.new("TextLabel")
-		nameL.BackgroundTransparency = 1
-		nameL.Size = UDim2.new(1, 0, 0, 14)
-		nameL.Font = Enum.Font.GothamBold
-		nameL.TextSize = 12
-		nameL.TextStrokeTransparency = 0.35
-		nameL.Parent = bb
+		local tagList = Instance.new("UIListLayout")
+		tagList.FillDirection = Enum.FillDirection.Vertical
+		tagList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		tagList.SortOrder = Enum.SortOrder.LayoutOrder
+		tagList.Padding = UDim.new(0, 1)
+		tagList.Parent = bb
 
-		local nickL = Instance.new("TextLabel")
-		nickL.BackgroundTransparency = 1
-		nickL.Position = UDim2.fromOffset(0, 14)
-		nickL.Size = UDim2.new(1, 0, 0, 12)
-		nickL.Font = Enum.Font.Gotham
-		nickL.TextSize = 10
+		local function tagLabel(order, size, bold)
+			local t = Instance.new("TextLabel")
+			t.BackgroundTransparency = 1
+			t.Size = UDim2.new(1, 0, 0, size)
+			t.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+			t.TextSize = bold and 12 or 10
+			t.TextStrokeTransparency = 0.35
+			t.TextXAlignment = Enum.TextXAlignment.Center
+			t.LayoutOrder = order
+			t.Visible = false
+			t.Parent = bb
+			return t
+		end
+
+		local nameL = tagLabel(1, 14, true)
+		local nickL = tagLabel(2, 12, false)
 		nickL.TextColor3 = Color3.fromRGB(180, 176, 190)
-		nickL.TextStrokeTransparency = 0.5
-		nickL.Parent = bb
-
-		local heartL = Instance.new("TextLabel")
-		heartL.BackgroundTransparency = 1
-		heartL.Position = UDim2.fromOffset(0, 28)
-		heartL.Size = UDim2.new(1, 0, 0, 14)
-		heartL.Font = Enum.Font.GothamBold
-		heartL.TextSize = 12
-		heartL.TextStrokeTransparency = 0.35
-		heartL.Parent = bb
-
-		local distL = Instance.new("TextLabel")
-		distL.BackgroundTransparency = 1
-		distL.Position = UDim2.fromOffset(0, 44)
-		distL.Size = UDim2.new(1, 0, 0, 12)
-		distL.Font = Enum.Font.Gotham
-		distL.TextSize = 10
+		local heartL = tagLabel(3, 14, true)
+		local distL = tagLabel(4, 12, false)
 		distL.TextColor3 = Color3.fromRGB(190, 190, 198)
-		distL.TextStrokeTransparency = 0.5
-		distL.Parent = bb
 
 		local boxFrame = Instance.new("Frame")
 		boxFrame.BackgroundTransparency = 1
 		boxFrame.BorderSizePixel = 0
 		boxFrame.Visible = false
-		boxFrame.ZIndex = 35
+		boxFrame.ZIndex = 110
 		boxFrame.Parent = host
 		local boxStroke = Instance.new("UIStroke")
 		boxStroke.Thickness = 1.5
@@ -2094,12 +2172,14 @@ function Feature.ESP()
 		boxCorner.Parent = boxFrame
 		table.insert(maid, boxFrame)
 
-		local tracer = makeLine(host)
-		table.insert(maid, tracer)
+		local tracer = makeTracer(host)
+		if typeof(tracer) == "Instance" then
+			table.insert(maid, tracer)
+		end
 
 		local bones = {}
 		for _ = 1, 16 do
-			local ln = makeLine(host)
+			local ln = makeLine(host, 115)
 			table.insert(bones, ln)
 			table.insert(maid, ln)
 		end
@@ -2117,11 +2197,11 @@ function Feature.ESP()
 
 		table.insert(maid, char.AncestryChanged:Connect(function(_, parent)
 			if not parent then
-				clear(char)
+				clear(userId)
 			end
 		end))
 
-		drawings[char] = {
+		drawings[userId] = {
 			maid = maid,
 			chams = chams,
 			bb = bb,
@@ -2178,24 +2258,52 @@ function Feature.ESP()
 		end
 		local myRoot = rootOf(LocalPlayer.Character)
 		local alive = {}
+		local now = os.clock()
 
 		if settings.enabled then
 			for _, plr in Players:GetPlayers() do
 				if plr ~= LocalPlayer then
 					local skip = settings.teamCheck and LocalPlayer.Team and plr.Team == LocalPlayer.Team
 					local char = plr.Character
+					if not skip and settings.streamLoad and (not char or not rootOf(char)) then
+						-- nudge streaming so far players can load in
+						if now - lastStream > 1.25 then
+							lastStream = now
+							if myRoot then
+								pcall(function()
+									LocalPlayer:RequestStreamAroundAsync(myRoot.Position, 8)
+								end)
+							end
+						end
+					end
+
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					local root = rootOf(char)
 					if not skip and char and hum and root and hum.Health > 0 then
 						local dist = myRoot and (root.Position - myRoot.Position).Magnitude or 0
-						if dist <= settings.maxDistance then
-							alive[char] = true
-							if not drawings[char] then
+						local limit = settings.maxDistance
+						-- keep existing ESP a bit past max so it doesn't flicker off
+						local existing = drawings[plr.UserId]
+						local keepPad = existing and 80 or 0
+						if dist <= limit + keepPad then
+							alive[plr.UserId] = true
+							if existing and existing.char ~= char then
+								clear(plr.UserId)
+								existing = nil
+							end
+							if not drawings[plr.UserId] then
 								create(char, plr)
 							end
-							local d = drawings[char]
+							local d = drawings[plr.UserId]
 							if not d then
 								continue
+							end
+
+							if settings.streamLoad and dist > 180 and now - lastStream > 0.9 then
+								lastStream = now
+								pcall(function()
+									LocalPlayer:RequestStreamAroundAsync(root.Position, 5)
+								end)
 							end
 
 							d.chams.Enabled = settings.chams
@@ -2226,7 +2334,6 @@ function Feature.ESP()
 								d.glow.Color = settings.glowColor
 							end
 
-							-- rounded 2D box
 							if settings.box then
 								local pos, size = getBounds(char, cam)
 								if pos and size then
@@ -2243,20 +2350,21 @@ function Feature.ESP()
 							end
 
 							if settings.tracer then
-								local sp, on = worldTo(cam, root.Position)
+								local head = char:FindFirstChild("Head")
+								local targetPos = (head and head.Position) or root.Position
+								local sp, on = worldTo(cam, targetPos)
 								if on then
-									local origin = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y)
+									local origin = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y - 2)
 									placeLine(d.tracer, origin, sp, settings.boxColor, 2)
 								else
-									d.tracer.Visible = false
+									hideLine(d.tracer)
 								end
 							else
-								d.tracer.Visible = false
+								hideLine(d.tracer)
 							end
 
-							-- skeleton
 							local pairs = char:FindFirstChild("UpperTorso") and R15_BONES or R6_BONES
-							for i, bone in d.bones do
+							for _, bone in d.bones do
 								bone.Visible = false
 							end
 							if settings.skeleton then
@@ -2283,9 +2391,9 @@ function Feature.ESP()
 			end
 		end
 
-		for char in drawings do
-			if not settings.enabled or not alive[char] then
-				clear(char)
+		for userId in drawings do
+			if not settings.enabled or not alive[userId] then
+				clear(userId)
 			end
 		end
 	end
@@ -2295,10 +2403,9 @@ function Feature.ESP()
 			for k, v in patch do
 				settings[k] = v
 			end
-			-- keep drawings alive when only style flags change
 			if patch.enabled == false then
-				for char in drawings do
-					clear(char)
+				for userId in drawings do
+					clear(userId)
 				end
 			end
 		end,
@@ -2312,9 +2419,7 @@ function Feature.ESP()
 			ensure()
 			conn = RunService.RenderStepped:Connect(step)
 			table.insert(charConns, Players.PlayerRemoving:Connect(function(plr)
-				if plr.Character then
-					clear(plr.Character)
-				end
+				clear(plr.UserId)
 			end))
 		end,
 		Stop = function()
@@ -2326,8 +2431,8 @@ function Feature.ESP()
 				c:Disconnect()
 			end
 			table.clear(charConns)
-			for char in drawings do
-				clear(char)
+			for userId in drawings do
+				clear(userId)
 			end
 			if gui then
 				gui:Destroy()
@@ -2701,5 +2806,62 @@ function Feature.Game()
 end
 
 Obsidian.Feature = Feature
+
+function Obsidian.Reload(url)
+	url = url or Obsidian.SourceUrl
+	if not url or url == "" then
+		warn("[Obsidian] Reload: no SourceUrl set")
+		return false
+	end
+	local ok, src = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if not ok or type(src) ~= "string" or #src < 8 then
+		warn("[Obsidian] Reload: HttpGet failed", src)
+		return false
+	end
+	-- wipe previous UI roots if present
+	pcall(function()
+		local hui = gethui and gethui()
+		local parent = hui or CoreGui
+		for _, name in { "ObsidianUI", "ObsidianESP" } do
+			local gui = parent:FindFirstChild(name)
+			if gui then
+				gui:Destroy()
+			end
+		end
+	end)
+	local fn, err = loadstring(src)
+	if not fn then
+		warn("[Obsidian] Reload: loadstring failed", err)
+		return false
+	end
+	task.defer(fn)
+	return true
+end
+
+function Obsidian.StartAutoReload(url, seconds)
+	url = url or Obsidian.SourceUrl
+	seconds = tonumber(seconds) or 60
+	if Obsidian._autoReload then
+		task.cancel(Obsidian._autoReload)
+		Obsidian._autoReload = nil
+	end
+	Obsidian.SourceUrl = url
+	Obsidian._autoReload = task.spawn(function()
+		while true do
+			task.wait(seconds)
+			Obsidian.Reload(url)
+		end
+	end)
+	return true
+end
+
+function Obsidian.StopAutoReload()
+	if Obsidian._autoReload then
+		task.cancel(Obsidian._autoReload)
+		Obsidian._autoReload = nil
+	end
+end
 
 return Obsidian
