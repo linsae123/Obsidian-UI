@@ -30,7 +30,7 @@ local TeleportService = game:GetService("TeleportService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local Obsidian = {
-	Version = "1.2.0",
+	Version = "1.2.1",
 	_capturing = false,
 	SourceUrl = nil,
 }
@@ -202,7 +202,31 @@ function Obsidian.FormatBind(value)
 			return MOUSE[value]
 		end
 		if value.EnumType == Enum.KeyCode and value ~= Enum.KeyCode.Unknown then
-			return value.Name
+			local short = {
+				RightControl = "RCTRL",
+				LeftControl = "LCTRL",
+				RightShift = "RSHIFT",
+				LeftShift = "LSHIFT",
+				RightAlt = "RALT",
+				LeftAlt = "LALT",
+				RightSuper = "RWIN",
+				LeftSuper = "LWIN",
+				Return = "ENTER",
+				Backspace = "BKSP",
+				Delete = "DEL",
+				Insert = "INS",
+				PageUp = "PGUP",
+				PageDown = "PGDN",
+				CapsLock = "CAPS",
+				NumLock = "NUM",
+				ScrollLock = "SCRL",
+				Print = "PRTSC",
+				Space = "SPACE",
+				Escape = "ESC",
+				Tab = "TAB",
+				Unknown = "—",
+			}
+			return short[value.Name] or value.Name
 		end
 	end
 	return "None"
@@ -281,17 +305,18 @@ local function makeKeybind(parent, config)
 	local value = config.Default or Enum.KeyCode.Unknown
 	local listening = false
 	local btn = button(parent, {
-		Size = UDim2.fromOffset(config.Width or 96, 28),
+		Size = UDim2.fromOffset(config.Width or 72, 28),
 		Position = config.Position or UDim2.new(1, 0, 0.5, 0),
 		AnchorPoint = config.AnchorPoint or Vector2.new(1, 0.5),
 		BackgroundColor3 = Color3.fromRGB(27, 25, 34),
+		BackgroundTransparency = 1,
 		Text = Obsidian.FormatBind(value),
 		TextColor3 = Color3.fromRGB(192, 187, 202),
-		TextSize = config.TextSize or 10,
+		TextSize = config.TextSize or 11,
 		ZIndex = config.ZIndex or 8,
 	})
-	corner(btn, 9)
-	stroke(btn, COLORS.line, 0.3)
+	btn.Font = Enum.Font.GothamBold
+	-- no box / stroke — plain key text
 
 	local function setValue(v, silent)
 		value = v
@@ -308,7 +333,7 @@ local function makeKeybind(parent, config)
 		listening = true
 		Obsidian._capturing = true
 		btn.Text = "..."
-		btn.BackgroundColor3 = Color3.fromRGB(53, 39, 80)
+		btn.TextColor3 = COLORS.purple
 
 		local armed = false
 		task.delay(0.12, function()
@@ -325,14 +350,14 @@ local function makeKeybind(parent, config)
 				listening = false
 				Obsidian._capturing = false
 				btn.Text = Obsidian.FormatBind(value)
-				btn.BackgroundColor3 = Color3.fromRGB(27, 25, 34)
+				btn.TextColor3 = Color3.fromRGB(192, 187, 202)
 				conn:Disconnect()
 				return
 			end
 			if bind then
 				listening = false
 				Obsidian._capturing = false
-				btn.BackgroundColor3 = Color3.fromRGB(27, 25, 34)
+				btn.TextColor3 = Color3.fromRGB(192, 187, 202)
 				setValue(bind, false)
 				conn:Disconnect()
 			end
@@ -432,7 +457,7 @@ function Obsidian:Create(config)
 	label(dragBtn, {
 		Text = title,
 		Font = Enum.Font.GothamBold,
-		TextSize = 13,
+		TextSize = 18,
 		Size = UDim2.new(1, -24, 1, 0),
 		Position = UDim2.fromOffset(22, 0),
 	})
@@ -464,7 +489,7 @@ function Obsidian:Create(config)
 
 	local minBtn = button(topbar, {
 		Size = UDim2.fromOffset(28, 28),
-		Position = UDim2.new(1, -68, 0.5, 0),
+		Position = UDim2.new(1, -92, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		Text = "–",
 		TextSize = 16,
@@ -475,7 +500,7 @@ function Obsidian:Create(config)
 
 	local closeBtn = button(topbar, {
 		Size = UDim2.fromOffset(28, 28),
-		Position = UDim2.new(1, -32, 0.5, 0),
+		Position = UDim2.new(1, -56, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		Text = "×",
 		TextSize = 16,
@@ -735,8 +760,17 @@ function Obsidian:Create(config)
 	local function selectPage(page)
 		state.selectedPage = page
 		pageTitle.Text = page.name
-		pageTitle.TextTransparency = 1
-		tween(pageTitle, { TextTransparency = 0 }, 0.22)
+		local hideTitle = page.fullWidth or page.hideTitle
+		pageTitle.Visible = not hideTitle
+		if hideTitle then
+			pageHost.Position = UDim2.fromOffset(16, 10)
+			pageHost.Size = UDim2.new(1, -32, 1, -20)
+		else
+			pageTitle.TextTransparency = 1
+			tween(pageTitle, { TextTransparency = 0 }, 0.22)
+			pageHost.Position = UDim2.fromOffset(16, 48)
+			pageHost.Size = UDim2.new(1, -32, 1, -64)
+		end
 
 		if page.fullWidth then
 			leftCol.Size = UDim2.new(1, 0, 1, 0)
@@ -767,8 +801,10 @@ function Obsidian:Create(config)
 				end
 			end
 		end
-		pageHost.Position = UDim2.fromOffset(16, 56)
-		tween(pageHost, { Position = UDim2.fromOffset(16, 48) }, 0.22)
+		if not hideTitle then
+			pageHost.Position = UDim2.fromOffset(16, 56)
+			tween(pageHost, { Position = UDim2.fromOffset(16, 48) }, 0.22)
+		end
 	end
 
 	local function setVisible(v)
@@ -1366,7 +1402,7 @@ function Obsidian:Create(config)
 		function api:AddWelcomeBanner(cfg)
 			cfg = cfg or {}
 			local card = Instance.new("Frame")
-			card.Size = UDim2.new(1, 0, 0, cfg.Height or 168)
+			card.Size = UDim2.new(1, 0, 0, cfg.Height or 210)
 			card.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
 			card.BorderSizePixel = 0
 			card.ClipsDescendants = true
@@ -1379,16 +1415,70 @@ function Obsidian:Create(config)
 			img.BackgroundTransparency = 1
 			img.Size = UDim2.fromScale(1, 1)
 			img.ScaleType = Enum.ScaleType.Crop
-			img.ImageTransparency = 0.15
-			img.Image = cfg.Image
-				or ("rbxthumb://type=GameIcon&id=" .. tostring(game.PlaceId) .. "&w=512&h=512")
+			img.ImageTransparency = 0.05
 			img.Parent = card
+
+			if cfg.Image then
+				img.Image = cfg.Image
+			else
+				-- Place primary thumbnail (PlaceId). GameIcon must use GameId.
+				img.Image = "rbxthumb://type=GameThumbnail&id="
+					.. tostring(game.PlaceId)
+					.. "&w=768&h=432"
+				task.spawn(function()
+					local apis = {
+						"https://thumbnails.roblox.com/v1/games/"
+							.. tostring(game.GameId)
+							.. "/thumbnails?size=768x432&format=Png&count=1",
+						"https://thumbnails.roblox.com/v1/places/gameicons?placeIds="
+							.. tostring(game.PlaceId)
+							.. "&returnPolicy=PlaceHolder&size=512x512&format=Png",
+					}
+					for _, api in apis do
+						local ok, raw = pcall(function()
+							return game:HttpGet(api)
+						end)
+						if ok and type(raw) == "string" then
+							local ok2, data = pcall(function()
+								return HttpService:JSONDecode(raw)
+							end)
+							if ok2 and typeof(data) == "table" and data.data then
+								for _, entry in data.data do
+									local list = entry.thumbnails
+									if typeof(list) == "table" then
+										for _, thumb in list do
+											if typeof(thumb) == "table" and type(thumb.imageUrl) == "string" and thumb.imageUrl ~= "" then
+												if img.Parent then
+													img.Image = thumb.imageUrl
+												end
+												return
+											end
+										end
+									elseif type(entry.imageUrl) == "string" and entry.imageUrl ~= "" then
+										if img.Parent then
+											img.Image = entry.imageUrl
+										end
+										return
+									end
+								end
+							end
+						end
+					end
+					-- last resort: universe icon
+					if img.Parent then
+						img.Image = "rbxthumb://type=GameIcon&id="
+							.. tostring(game.GameId)
+							.. "&w=512&h=512"
+					end
+				end)
+			end
 
 			local shade = Instance.new("Frame")
 			shade.Size = UDim2.fromScale(1, 1)
 			shade.BackgroundColor3 = Color3.fromRGB(8, 6, 14)
 			shade.BackgroundTransparency = 0.35
 			shade.BorderSizePixel = 0
+			shade.ZIndex = 2
 			shade.Parent = card
 			local g = Instance.new("UIGradient")
 			g.Rotation = 90
@@ -1420,9 +1510,9 @@ function Obsidian:Create(config)
 			label(card, {
 				Text = welcome,
 				Font = Enum.Font.GothamBold,
-				TextSize = 22,
-				Size = UDim2.new(1, -28, 0, 28),
-				Position = UDim2.new(0, 18, 1, -58),
+				TextSize = 24,
+				Size = UDim2.new(1, -28, 0, 30),
+				Position = UDim2.new(0, 18, 1, -62),
 				ZIndex = 5,
 			})
 			label(card, {
@@ -1965,6 +2055,7 @@ function Obsidian:Create(config)
 			name = cfg.Name or "Page",
 			icon = cfg.Icon,
 			fullWidth = cfg.FullWidth == true,
+			hideTitle = cfg.HideTitle == true or cfg.FullWidth == true,
 			left = Instance.new("Frame"),
 			right = Instance.new("Frame"),
 		}
@@ -3017,29 +3108,63 @@ function Obsidian.Reload(url)
 		warn("[Obsidian] Reload: no SourceUrl set")
 		return false
 	end
+	-- bust CDN / GitHub raw cache
+	local bust = tostring(math.floor(os.clock() * 1000))
+	local fetchUrl = url
+	if string.find(url, "?", 1, true) then
+		fetchUrl = url .. "&_=" .. bust
+	else
+		fetchUrl = url .. "?_=" .. bust
+	end
+
 	local ok, src = pcall(function()
-		return game:HttpGet(url)
+		return game:HttpGet(fetchUrl)
 	end)
+	if not ok or type(src) ~= "string" or #src < 8 then
+		-- retry without query (some hosts dislike ?)
+		ok, src = pcall(function()
+			return game:HttpGet(url)
+		end)
+	end
 	if not ok or type(src) ~= "string" or #src < 8 then
 		warn("[Obsidian] Reload: HttpGet failed", src)
 		return false
 	end
+
 	pcall(function()
-		local hui = gethui and gethui()
-		local parent = hui or CoreGui
-		for _, name in { "ObsidianUI", "ObsidianESP" } do
-			local gui = parent:FindFirstChild(name)
-			if gui then
-				gui:Destroy()
+		local parents = {}
+		if gethui then
+			table.insert(parents, gethui())
+		end
+		table.insert(parents, CoreGui)
+		local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+		if pg then
+			table.insert(parents, pg)
+		end
+		for _, parent in parents do
+			if parent then
+				for _, child in parent:GetChildren() do
+					local n = child.Name
+					if n == "ObsidianUI" or n == "ObsidianESP" or string.sub(n, 1, 8) == "Obsidian" then
+						child:Destroy()
+					end
+				end
 			end
 		end
 	end)
+
+	Obsidian.DisableTeleportReload()
 	local fn, err = loadstring(src)
 	if not fn then
 		warn("[Obsidian] Reload: loadstring failed", err)
 		return false
 	end
-	task.defer(fn)
+	task.defer(function()
+		local ran, runErr = pcall(fn)
+		if not ran then
+			warn("[Obsidian] Reload: script error", runErr)
+		end
+	end)
 	return true
 end
 
