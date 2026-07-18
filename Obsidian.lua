@@ -30,7 +30,7 @@ local TeleportService = game:GetService("TeleportService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local Obsidian = {
-	Version = "1.2.5",
+	Version = "2.0.0",
 	_capturing = false,
 	SourceUrl = nil,
 }
@@ -556,9 +556,73 @@ function Obsidian:Create(config)
 		Text = title,
 		Font = Enum.Font.GothamBold,
 		TextSize = 16,
-		Size = UDim2.new(1, -40, 0, 30),
+		Size = UDim2.new(1, -200, 0, 30),
 		Position = UDim2.fromOffset(20, 12),
 	})
+
+	local searchBox = Instance.new("TextBox")
+	searchBox.Name = "Search"
+	searchBox.AnchorPoint = Vector2.new(1, 0)
+	searchBox.Position = UDim2.new(1, -20, 0, 10)
+	searchBox.Size = UDim2.fromOffset(170, 28)
+	searchBox.BackgroundColor3 = Color3.fromRGB(22, 20, 28)
+	searchBox.BorderSizePixel = 0
+	searchBox.ClearTextOnFocus = false
+	searchBox.Font = Enum.Font.Gotham
+	searchBox.TextSize = 12
+	searchBox.TextColor3 = COLORS.text
+	searchBox.PlaceholderText = "Search..."
+	searchBox.PlaceholderColor3 = COLORS.muted
+	searchBox.Text = ""
+	searchBox.TextXAlignment = Enum.TextXAlignment.Left
+	searchBox.Parent = content
+	corner(searchBox, 9)
+	stroke(searchBox, COLORS.line, 0.4)
+	pad(searchBox, 0, 0, 10, 10)
+
+	state.searchables = {}
+	state.searchQuery = ""
+
+	local function applySearch(query)
+		query = string.lower(tostring(query or ""))
+		state.searchQuery = query
+		local pageHits = {}
+		for _, entry in state.searchables do
+			if not entry.inst or not entry.inst.Parent then
+				continue
+			end
+			local show = query == "" or string.find(entry.text, query, 1, true) ~= nil
+			entry.inst.Visible = show
+			if show then
+				if entry.page then
+					pageHits[entry.page] = true
+				end
+				-- reveal parent group / column frames
+				local p = entry.inst.Parent
+				local guard = 0
+				while p and guard < 8 do
+					if p:IsA("GuiObject") then
+						p.Visible = true
+					end
+					if p.Name == "Window" or p:IsA("ScreenGui") then
+						break
+					end
+					p = p.Parent
+					guard += 1
+				end
+			end
+		end
+		for _, p in state.pages do
+			if p.navBtn then
+				local hit = query == "" or pageHits[p] == true or string.find(string.lower(p.name), query, 1, true) ~= nil
+				p.navBtn.Visible = hit
+			end
+		end
+	end
+
+	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		applySearch(searchBox.Text)
+	end)
 
 	local pageHost = Instance.new("Frame")
 	pageHost.Position = UDim2.fromOffset(16, 48)
@@ -765,9 +829,10 @@ function Obsidian:Create(config)
 		pageTitle.Text = page.name
 		local hideTitle = page.fullWidth or page.hideTitle
 		pageTitle.Visible = not hideTitle
+		searchBox.Visible = true
 		if hideTitle then
-			pageHost.Position = UDim2.fromOffset(16, 10)
-			pageHost.Size = UDim2.new(1, -32, 1, -20)
+			pageHost.Position = UDim2.fromOffset(16, 44)
+			pageHost.Size = UDim2.new(1, -32, 1, -54)
 		else
 			pageTitle.TextTransparency = 1
 			tween(pageTitle, { TextTransparency = 0 }, 0.22)
@@ -1024,8 +1089,21 @@ function Obsidian:Create(config)
 		return self
 	end
 
-	local function createControlHost(parentFrame)
+	local function createControlHost(parentFrame, pageRef)
 		local api = {}
+
+		local function registerSearch(inst, text)
+			if not inst then
+				return
+			end
+			local key = string.lower(tostring(text or ""))
+			inst:SetAttribute("ObsidianSearch", tostring(text or ""))
+			table.insert(state.searchables, {
+				inst = inst,
+				text = key,
+				page = pageRef,
+			end)
+		end
 
 		local function addCard(height)
 			local card = Instance.new("Frame")
@@ -1043,6 +1121,7 @@ function Obsidian:Create(config)
 		function api:AddToggle(cfg)
 			cfg = cfg or {}
 			local card = addCard(cfg.Description and 58 or 48)
+			registerSearch(card, (cfg.Name or "Toggle") .. " " .. (cfg.Description or ""))
 			label(card, {
 				Text = cfg.Name or "Toggle",
 				Font = Enum.Font.GothamSemibold,
@@ -1068,6 +1147,7 @@ function Obsidian:Create(config)
 			local minV, maxV = cfg.Min or 0, cfg.Max or 100
 			local value = cfg.Default or minV
 			local card = addCard(72)
+			registerSearch(card, cfg.Name or "Slider")
 			label(card, {
 				Text = cfg.Name or "Slider",
 				Font = Enum.Font.GothamSemibold,
@@ -1160,6 +1240,7 @@ function Obsidian:Create(config)
 			local options = cfg.Options or { "Option 1" }
 			local value = cfg.Default or options[1]
 			local card = addCard(70)
+			registerSearch(card, cfg.Name or "Dropdown")
 			label(card, {
 				Text = cfg.Name or "Dropdown",
 				Font = Enum.Font.GothamSemibold,
@@ -1233,6 +1314,7 @@ function Obsidian:Create(config)
 		function api:AddKeybind(cfg)
 			cfg = cfg or {}
 			local card = addCard(48)
+			registerSearch(card, cfg.Name or "Keybind")
 			label(card, {
 				Text = cfg.Name or "Keybind",
 				Font = Enum.Font.GothamSemibold,
@@ -1306,6 +1388,7 @@ function Obsidian:Create(config)
 			cfg = cfg or {}
 			local color = cfg.Default or COLORS.purple
 			local card = addCard(48)
+			registerSearch(card, cfg.Name or "Color")
 			label(card, {
 				Text = cfg.Name or "Color",
 				Font = Enum.Font.GothamSemibold,
@@ -1351,6 +1434,7 @@ function Obsidian:Create(config)
 		function api:AddButton(cfg)
 			cfg = cfg or {}
 			local card = addCard(cfg.Description and 78 or 56)
+			registerSearch(card, (cfg.Name or "Button") .. " " .. (cfg.Description or ""))
 			if cfg.Description then
 				label(card, {
 					Text = cfg.Name or "Button",
@@ -1385,6 +1469,7 @@ function Obsidian:Create(config)
 		function api:AddParagraph(cfg)
 			cfg = cfg or {}
 			local card = addCard(84)
+			registerSearch(card, (cfg.Title or cfg.Name or "Info") .. " " .. (cfg.Content or cfg.Description or ""))
 			label(card, {
 				Text = cfg.Title or cfg.Name or "Info",
 				Font = Enum.Font.GothamSemibold,
@@ -1406,6 +1491,7 @@ function Obsidian:Create(config)
 			cfg = cfg or {}
 			local card = Instance.new("Frame")
 			card.Size = UDim2.new(1, 0, 0, cfg.Height or 210)
+			registerSearch(card, (cfg.Title or "Welcome") .. " " .. (cfg.Subtitle or "Dashboard"))
 			card.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
 			card.BorderSizePixel = 0
 			card.ClipsDescendants = true
@@ -1747,6 +1833,7 @@ function api:AddChangelog(cfg)
 			corner(group, 14)
 			stroke(group, COLORS.line, 0.45)
 			list(group, 0)
+			registerSearch(group, (cfg.Name or "Group") .. " " .. (cfg.Description or ""))
 
 			local headerH = cfg.Description and 54 or 42
 			local header = Instance.new("Frame")
@@ -1820,6 +1907,7 @@ function api:AddChangelog(cfg)
 			function groupApi:AddToggle(c)
 				c = c or {}
 				local card = row(c.Description and 52 or 40)
+				registerSearch(card, (c.Name or "Toggle") .. " " .. (c.Description or ""))
 				label(card, {
 					Text = c.Name or "Toggle",
 					Font = Enum.Font.GothamSemibold,
@@ -1843,6 +1931,7 @@ function api:AddChangelog(cfg)
 				local minV, maxV = c.Min or 0, c.Max or 100
 				local value = c.Default or minV
 				local card = row(68)
+				registerSearch(card, c.Name or "Slider")
 				label(card, {
 					Text = c.Name or "Slider",
 					Font = Enum.Font.GothamSemibold,
@@ -1931,6 +2020,7 @@ function api:AddChangelog(cfg)
 			function groupApi:AddKeybind(c)
 				c = c or {}
 				local card = row(46)
+				registerSearch(card, c.Name or "Keybind")
 				label(card, {
 					Text = c.Name or "Keybind",
 					Font = Enum.Font.GothamSemibold,
@@ -2002,6 +2092,7 @@ function api:AddChangelog(cfg)
 				local options = c.Options or { "Option 1" }
 				local value = c.Default or options[1]
 				local card = row(64)
+				registerSearch(card, c.Name or "Dropdown")
 				label(card, {
 					Text = c.Name or "Dropdown",
 					Font = Enum.Font.GothamSemibold,
@@ -2255,10 +2346,10 @@ function api:AddChangelog(cfg)
 		pageApi.__index = pageApi
 
 		function pageApi:Left()
-			return createControlHost(page.left)
+			return createControlHost(page.left, page)
 		end
 		function pageApi:Right()
-			return createControlHost(page.right)
+			return createControlHost(page.right, page)
 		end
 		function pageApi:AddColumn(side)
 			if string.lower(tostring(side)) == "right" then
@@ -2267,8 +2358,8 @@ function api:AddChangelog(cfg)
 			return self:Left()
 		end
 
-		local leftApi = createControlHost(page.left)
-		local rightApi = createControlHost(page.right)
+		local leftApi = createControlHost(page.left, page)
+		local rightApi = createControlHost(page.right, page)
 		local leftCount, rightCount = 0, 0
 		local function pick()
 			if page.fullWidth then
@@ -2455,6 +2546,7 @@ function Feature.ESP()
 	local settings = {
 		enabled = false,
 		box = true,
+		boxMode = "Corners", -- Corners | Full
 		roundedBox = true,
 		health = true,
 		heartHealth = true,
@@ -2478,11 +2570,34 @@ function Feature.ESP()
 	local gui
 	local drawings = {} -- keyed by UserId
 	local conn
-	local charConns = {}
+	local watchConns = {}
 	local lastStream = 0
+	local streamIndex = 1
 
 	local function rootOf(char)
-		return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"))
+		if not char then
+			return nil
+		end
+		return char:FindFirstChild("HumanoidRootPart")
+			or char:FindFirstChild("UpperTorso")
+			or char:FindFirstChild("Torso")
+			or char.PrimaryPart
+	end
+
+	local function anyPart(char)
+		local r = rootOf(char)
+		if r then
+			return r
+		end
+		if not char then
+			return nil
+		end
+		for _, p in char:GetChildren() do
+			if p:IsA("BasePart") then
+				return p
+			end
+		end
+		return nil
 	end
 
 	local function ensure()
@@ -2497,6 +2612,26 @@ function Feature.ESP()
 		gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 		protect(gui)
 		return gui
+	end
+
+	local function makeCornerBracket(parent)
+		local holder = Instance.new("Frame")
+		holder.BackgroundTransparency = 1
+		holder.BorderSizePixel = 0
+		holder.Visible = false
+		holder.ZIndex = 112
+		holder.Parent = parent
+		local h = Instance.new("Frame")
+		h.Name = "H"
+		h.BorderSizePixel = 0
+		h.ZIndex = 113
+		h.Parent = holder
+		local v = Instance.new("Frame")
+		v.Name = "V"
+		v.BorderSizePixel = 0
+		v.ZIndex = 113
+		v.Parent = holder
+		return holder
 	end
 
 	local function clear(userId)
@@ -2523,6 +2658,13 @@ function Feature.ESP()
 				destroyLine(bone)
 			end
 		end
+		if d.corners then
+			for _, c in d.corners do
+				if typeof(c) == "Instance" then
+					c:Destroy()
+				end
+			end
+		end
 		for _, key in { "chams", "bb", "box", "glow" } do
 			local x = d[key]
 			if typeof(x) == "Instance" then
@@ -2535,18 +2677,26 @@ function Feature.ESP()
 	end
 
 	local function create(char, player)
-		local root = rootOf(char)
-		local head = char:FindFirstChild("Head")
+		if not char or not player then
+			return
+		end
+		local root = anyPart(char)
 		if not root then
 			return
 		end
+		local head = char:FindFirstChild("Head")
 		local host = ensure()
 		local maid = {}
 		local userId = player.UserId
 
+		-- wipe previous drawing for this user
+		if drawings[userId] then
+			clear(userId)
+		end
+
 		local chams = Instance.new("Highlight")
-		chams.FillTransparency = 0.7
-		chams.OutlineTransparency = 0.2
+		chams.FillTransparency = 0.75
+		chams.OutlineTransparency = 0.15
 		chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		chams.Adornee = char
 		chams.Enabled = false
@@ -2590,6 +2740,7 @@ function Feature.ESP()
 		local distL = tagLabel(4, 12, false)
 		distL.TextColor3 = Color3.fromRGB(190, 190, 198)
 
+		-- full rounded box
 		local boxFrame = Instance.new("Frame")
 		boxFrame.BackgroundTransparency = 1
 		boxFrame.BorderSizePixel = 0
@@ -2597,13 +2748,24 @@ function Feature.ESP()
 		boxFrame.ZIndex = 110
 		boxFrame.Parent = host
 		local boxStroke = Instance.new("UIStroke")
-		boxStroke.Thickness = 1.5
-		boxStroke.Transparency = 0.1
+		boxStroke.Thickness = 1.6
+		boxStroke.Transparency = 0.05
 		boxStroke.Parent = boxFrame
 		local boxCorner = Instance.new("UICorner")
 		boxCorner.CornerRadius = UDim.new(0, 8)
 		boxCorner.Parent = boxFrame
 		table.insert(maid, boxFrame)
+
+		-- corner brackets (classic ESP box)
+		local corners = {
+			TL = makeCornerBracket(host),
+			TR = makeCornerBracket(host),
+			BL = makeCornerBracket(host),
+			BR = makeCornerBracket(host),
+		}
+		for _, c in corners do
+			table.insert(maid, c)
+		end
 
 		local tracer = makeTracer(host)
 		if typeof(tracer) == "Instance" then
@@ -2628,9 +2790,15 @@ function Feature.ESP()
 			table.insert(maid, glow)
 		end
 
+		-- don't wipe on brief stream unload; CharacterAdded handler recreates
 		table.insert(maid, char.AncestryChanged:Connect(function(_, parent)
 			if not parent then
-				clear(userId)
+				task.delay(0.35, function()
+					local d = drawings[userId]
+					if d and d.char == char and (not player.Character or player.Character ~= char) then
+						clear(userId)
+					end
+				end)
 			end
 		end))
 
@@ -2645,12 +2813,58 @@ function Feature.ESP()
 			box = boxFrame,
 			boxStroke = boxStroke,
 			boxCorner = boxCorner,
+			corners = corners,
 			tracer = tracer,
 			bones = bones,
 			glow = glow,
 			player = player,
 			char = char,
+			miss = 0,
 		}
+	end
+
+	local function placeCorner(bracket, x, y, w, h, color, which)
+		local len = math.clamp(math.min(w, h) * 0.28, 6, 18)
+		local thick = 2
+		bracket.Visible = true
+		bracket.Position = UDim2.fromOffset(x, y)
+		bracket.Size = UDim2.fromOffset(w, h)
+		local H, V = bracket:FindFirstChild("H"), bracket:FindFirstChild("V")
+		if not (H and V) then
+			return
+		end
+		H.BackgroundColor3 = color
+		V.BackgroundColor3 = color
+		if which == "TL" then
+			H.Size = UDim2.fromOffset(len, thick)
+			H.Position = UDim2.fromOffset(0, 0)
+			V.Size = UDim2.fromOffset(thick, len)
+			V.Position = UDim2.fromOffset(0, 0)
+		elseif which == "TR" then
+			H.Size = UDim2.fromOffset(len, thick)
+			H.Position = UDim2.new(1, -len, 0, 0)
+			V.Size = UDim2.fromOffset(thick, len)
+			V.Position = UDim2.new(1, -thick, 0, 0)
+		elseif which == "BL" then
+			H.Size = UDim2.fromOffset(len, thick)
+			H.Position = UDim2.new(0, 0, 1, -thick)
+			V.Size = UDim2.fromOffset(thick, len)
+			V.Position = UDim2.new(0, 0, 1, -len)
+		else -- BR
+			H.Size = UDim2.fromOffset(len, thick)
+			H.Position = UDim2.new(1, -len, 1, -thick)
+			V.Size = UDim2.fromOffset(thick, len)
+			V.Position = UDim2.new(1, -thick, 1, -len)
+		end
+	end
+
+	local function hideCorners(d)
+		if not d.corners then
+			return
+		end
+		for _, c in d.corners do
+			c.Visible = false
+		end
 	end
 
 	local function getBounds(char, cam)
@@ -2672,6 +2886,13 @@ function Feature.ESP()
 			end
 		end
 		if #points < 2 then
+			local root = anyPart(char)
+			if root then
+				local v, on = worldTo(cam, root.Position)
+				if on then
+					return Vector2.new(v.X - 20, v.Y - 40), Vector2.new(40, 80)
+				end
+			end
 			return nil
 		end
 		local minX, minY = math.huge, math.huge
@@ -2680,8 +2901,62 @@ function Feature.ESP()
 			minX, minY = math.min(minX, p.X), math.min(minY, p.Y)
 			maxX, maxY = math.max(maxX, p.X), math.max(maxY, p.Y)
 		end
-		local padAmt = 4
+		local padAmt = 3
 		return Vector2.new(minX - padAmt, minY - padAmt), Vector2.new(maxX - minX + padAmt * 2, maxY - minY + padAmt * 2)
+	end
+
+	local function tryCreate(plr)
+		local char = plr.Character
+		if not char then
+			return
+		end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then
+			return
+		end
+		if not anyPart(char) then
+			return
+		end
+		local existing = drawings[plr.UserId]
+		if existing and existing.char == char then
+			return
+		end
+		create(char, plr)
+	end
+
+	local function watchPlayer(plr)
+		if plr == LocalPlayer then
+			return
+		end
+		table.insert(watchConns, plr.CharacterAdded:Connect(function(char)
+			task.spawn(function()
+				-- wait for parts to stream in (new players / far players)
+				for _ = 1, 40 do
+					if not settings.enabled then
+						return
+					end
+					if anyPart(char) and char:FindFirstChildOfClass("Humanoid") then
+						tryCreate(plr)
+						return
+					end
+					task.wait(0.15)
+				end
+				tryCreate(plr)
+			end)
+		end))
+		table.insert(watchConns, plr.CharacterRemoving:Connect(function()
+			-- soft clear after short delay so respawn can replace
+			task.delay(0.2, function()
+				if not plr.Character then
+					clear(plr.UserId)
+				end
+			end)
+		end))
+		if plr.Character then
+			task.defer(function()
+				tryCreate(plr)
+			end)
+		end
 	end
 
 	local function step()
@@ -2692,131 +2967,167 @@ function Feature.ESP()
 		local myRoot = rootOf(LocalPlayer.Character)
 		local alive = {}
 		local now = os.clock()
+		local players = Players:GetPlayers()
+
+		if settings.enabled and settings.streamLoad and myRoot and now - lastStream > 0.75 then
+			lastStream = now
+			streamIndex = (streamIndex % math.max(#players, 1)) + 1
+			local target = players[streamIndex]
+			if target and target ~= LocalPlayer then
+				local pos = myRoot.Position
+				local tChar = target.Character
+				local tRoot = tChar and anyPart(tChar)
+				if tRoot then
+					pos = tRoot.Position
+				end
+				pcall(function()
+					LocalPlayer:RequestStreamAroundAsync(pos, 10)
+				end)
+			end
+		end
 
 		if settings.enabled then
-			for _, plr in Players:GetPlayers() do
+			for _, plr in players do
 				if plr ~= LocalPlayer then
 					local skip = settings.teamCheck and LocalPlayer.Team and plr.Team == LocalPlayer.Team
-					local char = plr.Character
-					if not skip and settings.streamLoad and (not char or not rootOf(char)) then
-						-- nudge streaming so far players can load in
-						if now - lastStream > 1.25 then
-							lastStream = now
-							if myRoot then
-								pcall(function()
-									LocalPlayer:RequestStreamAroundAsync(myRoot.Position, 8)
-								end)
-							end
-						end
-					end
-
-					local hum = char and char:FindFirstChildOfClass("Humanoid")
-					local root = rootOf(char)
-					if not skip and char and hum and root and hum.Health > 0 then
-						local dist = myRoot and (root.Position - myRoot.Position).Magnitude or 0
-						local limit = settings.maxDistance
-						-- keep existing ESP a bit past max so it doesn't flicker off
-						local existing = drawings[plr.UserId]
-						local keepPad = existing and 80 or 0
-						if dist <= limit + keepPad then
-							alive[plr.UserId] = true
-							if existing and existing.char ~= char then
-								clear(plr.UserId)
-								existing = nil
-							end
-							if not drawings[plr.UserId] then
-								create(char, plr)
-							end
-							local d = drawings[plr.UserId]
-							if not d then
-								continue
-							end
-
-							if settings.streamLoad and dist > 180 and now - lastStream > 0.9 then
-								lastStream = now
-								pcall(function()
-									LocalPlayer:RequestStreamAroundAsync(root.Position, 5)
-								end)
-							end
-
-							d.chams.Enabled = settings.chams
-							d.chams.OutlineColor = settings.boxColor
-							d.chams.FillColor = settings.boxColor
-
-							local showTag = settings.name or settings.nickname or settings.health or settings.distance
-							d.bb.Enabled = showTag
-							d.nameL.Visible = settings.name
-							d.nameL.Text = plr.DisplayName
-							d.nameL.TextColor3 = settings.nameColor
-							d.nickL.Visible = settings.nickname
-							d.nickL.Text = "@" .. plr.Name
-							d.heartL.Visible = settings.health
-							local hp = math.floor(hum.Health + 0.5)
-							local maxHp = math.floor(hum.MaxHealth + 0.5)
-							if settings.heartHealth then
-								d.heartL.Text = string.format("♥ %d / %d", hp, maxHp)
-							else
-								d.heartL.Text = string.format("%d / %d", hp, maxHp)
-							end
-							d.heartL.TextColor3 = settings.healthColor
-							d.distL.Visible = settings.distance
-							d.distL.Text = string.format("%dm", math.floor(dist))
-
-							if d.glow then
-								d.glow.Enabled = settings.headGlow
-								d.glow.Color = settings.glowColor
-							end
-
-							if settings.box then
-								local pos, size = getBounds(char, cam)
-								if pos and size then
-									d.box.Visible = true
-									d.box.Position = UDim2.fromOffset(pos.X, pos.Y)
-									d.box.Size = UDim2.fromOffset(math.max(size.X, 8), math.max(size.Y, 8))
-									d.boxStroke.Color = settings.boxColor
-									d.boxCorner.CornerRadius = UDim.new(0, settings.roundedBox and 8 or 2)
-								else
-									d.box.Visible = false
+					if not skip then
+						local char = plr.Character
+						local hum = char and char:FindFirstChildOfClass("Humanoid")
+						local root = anyPart(char)
+						if char and hum and root and hum.Health > 0 then
+							local dist = myRoot and (root.Position - myRoot.Position).Magnitude or 0
+							local existing = drawings[plr.UserId]
+							local keepPad = existing and 120 or 0
+							if dist <= settings.maxDistance + keepPad then
+								alive[plr.UserId] = true
+								if not existing or existing.char ~= char then
+									create(char, plr)
 								end
-							else
-								d.box.Visible = false
-							end
+								local d = drawings[plr.UserId]
+								if d then
+									d.miss = 0
+									d.chams.Enabled = settings.chams
+									d.chams.OutlineColor = settings.boxColor
+									d.chams.FillColor = settings.boxColor
+									if d.chams.Adornee ~= char then
+										d.chams.Adornee = char
+									end
 
-							if settings.tracer then
-								local head = char:FindFirstChild("Head")
-								local targetPos = (head and head.Position) or root.Position
-								local sp, on = worldTo(cam, targetPos)
-								if on then
-									local origin = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y - 2)
-									placeLine(d.tracer, origin, sp, settings.boxColor, 2)
-								else
-									hideLine(d.tracer)
-								end
-							else
-								hideLine(d.tracer)
-							end
+									local showTag = settings.name or settings.nickname or settings.health or settings.distance
+									d.bb.Enabled = showTag
+									local adorn = char:FindFirstChild("Head") or root
+									if d.bb.Adornee ~= adorn then
+										d.bb.Adornee = adorn
+									end
+									d.nameL.Visible = settings.name
+									d.nameL.Text = plr.DisplayName
+									d.nameL.TextColor3 = settings.nameColor
+									d.nickL.Visible = settings.nickname
+									d.nickL.Text = "@" .. plr.Name
+									d.heartL.Visible = settings.health
+									local hp = math.floor(hum.Health + 0.5)
+									local maxHp = math.floor(hum.MaxHealth + 0.5)
+									if settings.heartHealth then
+										d.heartL.Text = string.format("♥ %d / %d", hp, maxHp)
+									else
+										d.heartL.Text = string.format("%d / %d", hp, maxHp)
+									end
+									d.heartL.TextColor3 = settings.healthColor
+									d.distL.Visible = settings.distance
+									d.distL.Text = string.format("%dm", math.floor(dist))
 
-							local pairs = char:FindFirstChild("UpperTorso") and R15_BONES or R6_BONES
-							for _, bone in d.bones do
-								bone.Visible = false
-							end
-							if settings.skeleton then
-								local bi = 0
-								for _, pair in pairs do
-									local aPart = char:FindFirstChild(pair[1])
-									local bPart = char:FindFirstChild(pair[2])
-									if aPart and bPart and aPart:IsA("BasePart") and bPart:IsA("BasePart") then
-										local a, aOn = worldTo(cam, aPart.Position)
-										local b, bOn = worldTo(cam, bPart.Position)
-										if aOn and bOn then
-											bi += 1
-											local line = d.bones[bi]
-											if line then
-												placeLine(line, a, b, settings.skeletonColor, 2)
+									if d.glow then
+										d.glow.Enabled = settings.headGlow
+										d.glow.Color = settings.glowColor
+									elseif settings.headGlow then
+										local head = char:FindFirstChild("Head")
+										if head then
+											local g = Instance.new("PointLight")
+											g.Name = "ObsidianHeadGlow"
+											g.Brightness = 1.4
+											g.Range = 8
+											g.Color = settings.glowColor
+											g.Parent = head
+											d.glow = g
+											table.insert(d.maid, g)
+										end
+									end
+
+									local mode = string.lower(tostring(settings.boxMode or "corners"))
+									if settings.box then
+										local pos, size = getBounds(char, cam)
+										if pos and size and size.X > 2 and size.Y > 2 then
+											if mode == "full" then
+												hideCorners(d)
+												d.box.Visible = true
+												d.box.Position = UDim2.fromOffset(pos.X, pos.Y)
+												d.box.Size = UDim2.fromOffset(math.max(size.X, 8), math.max(size.Y, 8))
+												d.boxStroke.Color = settings.boxColor
+												d.boxCorner.CornerRadius = UDim.new(0, settings.roundedBox and 8 or 2)
+											else
+												d.box.Visible = false
+												placeCorner(d.corners.TL, pos.X, pos.Y, size.X, size.Y, settings.boxColor, "TL")
+												placeCorner(d.corners.TR, pos.X, pos.Y, size.X, size.Y, settings.boxColor, "TR")
+												placeCorner(d.corners.BL, pos.X, pos.Y, size.X, size.Y, settings.boxColor, "BL")
+												placeCorner(d.corners.BR, pos.X, pos.Y, size.X, size.Y, settings.boxColor, "BR")
+											end
+										else
+											d.box.Visible = false
+											hideCorners(d)
+										end
+									else
+										d.box.Visible = false
+										hideCorners(d)
+									end
+
+									if settings.tracer then
+										local head = char:FindFirstChild("Head")
+										local targetPos = (head and head.Position) or root.Position
+										local sp, on = worldTo(cam, targetPos)
+										if on then
+											local origin = Vector2.new(cam.ViewportSize.X * 0.5, cam.ViewportSize.Y - 2)
+											placeLine(d.tracer, origin, sp, settings.boxColor, 2)
+										else
+											hideLine(d.tracer)
+										end
+									else
+										hideLine(d.tracer)
+									end
+
+									local pairsList = char:FindFirstChild("UpperTorso") and R15_BONES or R6_BONES
+									for _, bone in d.bones do
+										bone.Visible = false
+									end
+									if settings.skeleton then
+										local bi = 0
+										for _, pair in pairsList do
+											local aPart = char:FindFirstChild(pair[1])
+											local bPart = char:FindFirstChild(pair[2])
+											if aPart and bPart and aPart:IsA("BasePart") and bPart:IsA("BasePart") then
+												local a, aOn = worldTo(cam, aPart.Position)
+												local b, bOn = worldTo(cam, bPart.Position)
+												if aOn and bOn then
+													bi += 1
+													local line = d.bones[bi]
+													if line then
+														placeLine(line, a, b, settings.skeletonColor, 2)
+													end
+												end
 											end
 										end
 									end
 								end
+							elseif existing then
+								existing.miss = (existing.miss or 0) + 1
+								if existing.miss < 45 then
+									alive[plr.UserId] = true
+								end
+							end
+						elseif drawings[plr.UserId] then
+							local existing = drawings[plr.UserId]
+							existing.miss = (existing.miss or 0) + 1
+							if existing.miss < 45 then
+								alive[plr.UserId] = true
 							end
 						end
 					end
@@ -2840,6 +3151,12 @@ function Feature.ESP()
 				for userId in drawings do
 					clear(userId)
 				end
+			elseif patch.enabled == true then
+				for _, plr in Players:GetPlayers() do
+					if plr ~= LocalPlayer then
+						tryCreate(plr)
+					end
+				end
 			end
 		end,
 		Get = function()
@@ -2850,20 +3167,28 @@ function Feature.ESP()
 				return
 			end
 			ensure()
-			conn = RunService.RenderStepped:Connect(step)
-			table.insert(charConns, Players.PlayerRemoving:Connect(function(plr)
+			for _, c in watchConns do
+				c:Disconnect()
+			end
+			table.clear(watchConns)
+			table.insert(watchConns, Players.PlayerAdded:Connect(watchPlayer))
+			table.insert(watchConns, Players.PlayerRemoving:Connect(function(plr)
 				clear(plr.UserId)
 			end))
+			for _, plr in Players:GetPlayers() do
+				watchPlayer(plr)
+			end
+			conn = RunService.RenderStepped:Connect(step)
 		end,
 		Stop = function()
 			if conn then
 				conn:Disconnect()
 				conn = nil
 			end
-			for _, c in charConns do
+			for _, c in watchConns do
 				c:Disconnect()
 			end
-			table.clear(charConns)
+			table.clear(watchConns)
 			for userId in drawings do
 				clear(userId)
 			end
@@ -2874,6 +3199,7 @@ function Feature.ESP()
 		end,
 	}
 end
+
 
 function Feature.Player()
 	local settings = {
