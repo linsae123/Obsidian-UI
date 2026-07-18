@@ -72,6 +72,7 @@ local LUCIDE = {
 	rocket = { id = 16898613699, rect = Vector2.new(918, 147), size = Vector2.new(48, 48) },
 	monitor = { id = 16898613613, rect = Vector2.new(404, 820), size = Vector2.new(48, 48) },
 	layers = { id = 16898613509, rect = Vector2.new(98, 967), size = Vector2.new(48, 48) },
+	search = { id = 16898613699, rect = Vector2.new(918, 857), size = Vector2.new(48, 48) },
 }
 
 local function lucideIcon(parent, name, size, color, position, anchor)
@@ -560,12 +561,32 @@ function Obsidian:Create(config)
 		Position = UDim2.fromOffset(20, 12),
 	})
 
+	local searchWrap = Instance.new("Frame")
+	searchWrap.Name = "Search"
+	searchWrap.AnchorPoint = Vector2.new(1, 0)
+	searchWrap.Position = UDim2.new(1, -20, 0, 10)
+	searchWrap.Size = UDim2.fromOffset(178, 28)
+	searchWrap.BackgroundColor3 = Color3.fromRGB(22, 20, 28)
+	searchWrap.BorderSizePixel = 0
+	searchWrap.Parent = content
+	corner(searchWrap, 9)
+	stroke(searchWrap, COLORS.line, 0.4)
+
+	local searchIcon = lucideIcon(
+		searchWrap,
+		"search",
+		14,
+		COLORS.muted,
+		UDim2.new(0, 9, 0.5, 0),
+		Vector2.new(0, 0.5)
+	)
+	searchIcon.ZIndex = 40
+
 	local searchBox = Instance.new("TextBox")
-	searchBox.Name = "Search"
-	searchBox.AnchorPoint = Vector2.new(1, 0)
-	searchBox.Position = UDim2.new(1, -20, 0, 10)
-	searchBox.Size = UDim2.fromOffset(170, 28)
-	searchBox.BackgroundColor3 = Color3.fromRGB(22, 20, 28)
+	searchBox.Name = "SearchInput"
+	searchBox.Position = UDim2.fromOffset(28, 0)
+	searchBox.Size = UDim2.new(1, -32, 1, 0)
+	searchBox.BackgroundTransparency = 1
 	searchBox.BorderSizePixel = 0
 	searchBox.ClearTextOnFocus = false
 	searchBox.Font = Enum.Font.Gotham
@@ -575,10 +596,9 @@ function Obsidian:Create(config)
 	searchBox.PlaceholderColor3 = COLORS.muted
 	searchBox.Text = ""
 	searchBox.TextXAlignment = Enum.TextXAlignment.Left
-	searchBox.Parent = content
-	corner(searchBox, 9)
-	stroke(searchBox, COLORS.line, 0.4)
-	pad(searchBox, 0, 0, 10, 10)
+	searchBox.ZIndex = 41
+	searchBox.Parent = searchWrap
+	pad(searchBox, 0, 0, 0, 6)
 
 	state.searchables = {}
 	state.searchQuery = ""
@@ -824,7 +844,7 @@ function Obsidian:Create(config)
 		pageTitle.Text = page.name
 		local hideTitle = page.fullWidth or page.hideTitle
 		pageTitle.Visible = not hideTitle
-		searchBox.Visible = true
+		searchWrap.Visible = true
 		if hideTitle then
 			pageHost.Position = UDim2.fromOffset(16, 44)
 			pageHost.Size = UDim2.new(1, -32, 1, -54)
